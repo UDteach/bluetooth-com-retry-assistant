@@ -45,6 +45,9 @@ Windows 側にも見える形で再現したい場合は、次のどちらかを
 
 - `docs/virtual_com_mock.md`: 仮想 COM ドライバで Windows に COM ポートを表示し、その COM 名を `--mock-com-port` でアプリ内 mock に割り当てます。Bluetooth ペアリング一覧は再現しませんが、COM 検出の動きは仮想で確認できます。
 - `docs/windows_visible_mock.md`: ESP32 を Classic Bluetooth SPP 機器として動かし、Windows の Bluetooth 一覧、ペアリング、COM ポート生成を再現します。
+- `docs/esp32_hardware_test_checklist.md`: ESP32 到着後に実行する順番、成功条件、失敗時の確認点です。
+
+ESP32 実機では `BT-COM-MOCK` で COM が出るパターン、`BT-NO-COM-MOCK` で COM が出ないパターンを分けて確認できます。
 
 mock の MAC や COM 名は起動時に指定できます。
 
@@ -67,6 +70,7 @@ py -m unittest discover -s tests
 py -m compileall bluetooth_assistant tests
 py -m bluetooth_assistant.diagnostics --json --mock-retry
 py -m bluetooth_assistant.diagnostics --json --mock-retry --mock-com-port COM98
+py -m bluetooth_assistant.diagnostics --json --esp32-check --wait-seconds 90
 ```
 
 実機に変更を加えない読み取り診断:
@@ -76,6 +80,14 @@ py -m bluetooth_assistant.diagnostics --json --scan-bluetooth
 ```
 
 `--scan-bluetooth` は一覧取得だけを行い、ペアリングや解除は実行しません。
+
+ESP32実機で、ペアリング、Windows登録、COM出現まで確認する場合:
+
+```powershell
+.\scripts\run_esp32_pairing_test.ps1 -TargetName BT-COM-MOCK -ComWaitSeconds 60 -IUnderstandThisChangesBluetoothPairing
+```
+
+このコマンドはWindowsのBluetoothペアリング状態を変更します。通常は管理者権限なしで試し、企業PCポリシーやドライバ操作で拒否される場合だけ管理者権限を検討してください。
 
 ## exe ビルド
 

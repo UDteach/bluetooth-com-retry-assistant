@@ -8,6 +8,7 @@ import time
 import tkinter as tk
 from tkinter import messagebox, ttk
 
+from .com_candidate import assess_com_candidate
 from .mock_backend import MockBluetoothBackend
 from .models import BluetoothDevice, ComPortInfo, find_matching_ports, merge_duplicate_devices, normalize_address
 from .retry import BluetoothBackend, PairingRetrier, RetryConfig, RetryEvent
@@ -201,12 +202,13 @@ class BluetoothAssistantApp(tk.Tk):
         device_frame.rowconfigure(0, weight=1)
         main.add(device_frame, weight=3)
 
-        columns = ("checked", "name", "address", "status", "com", "class", "last_seen")
+        columns = ("checked", "name", "address", "candidate", "status", "com", "class", "last_seen")
         self.tree = ttk.Treeview(device_frame, columns=columns, show="headings", selectmode="browse")
         headings = {
             "checked": "選択",
             "name": "名前",
             "address": "MAC",
+            "candidate": "COM候補",
             "status": "状態",
             "com": "COM",
             "class": "Class",
@@ -216,6 +218,7 @@ class BluetoothAssistantApp(tk.Tk):
             "checked": 64,
             "name": 240,
             "address": 150,
+            "candidate": 110,
             "status": 180,
             "com": 120,
             "class": 90,
@@ -446,14 +449,16 @@ class BluetoothAssistantApp(tk.Tk):
             if self.tree.exists(address):
                 self.tree.item(address, values=self._row_values(device))
 
-    def _row_values(self, device: BluetoothDevice) -> tuple[str, str, str, str, str, str, str]:
+    def _row_values(self, device: BluetoothDevice) -> tuple[str, str, str, str, str, str, str, str]:
         matched_ports = find_matching_ports(device.address, self._ports)
+        assessment = assess_com_candidate(device, self._ports)
         run_status = self._run_status_by_address.get(device.address, "")
         status_text = device.status_text if not run_status else f"{run_status} / {device.status_text}"
         return (
             "☑" if device.address in self._checked_addresses else "☐",
             device.name or "(名前なし)",
             device.address,
+            assessment.label,
             status_text,
             ", ".join(port.device for port in matched_ports),
             f"0x{device.class_of_device:06X}" if device.class_of_device else "",
@@ -551,9 +556,11 @@ class BluetoothAssistantApp(tk.Tk):
         names = ", ".join(selected.raw_names) if selected.raw_names else selected.name
         port_text = ", ".join(port.device for port in ports) if ports else "未検出"
         checked_count = len(self._checked_addresses)
+        assessment = assess_com_candidate(selected, self._ports)
+        reason_text = " / ".join(assessment.reasons)
         self.detail_var.set(
             f"{selected.address} / {names or '(名前なし)'} / {selected.status_text} / "
-            f"COM: {port_text} / チェック中: {checked_count}台"
+            f"{assessment.label}: {reason_text} / COM: {port_text} / チェック中: {checked_count}台"
         )
 
     def _set_busy(self, busy: bool, *, retrying: bool = False) -> None:

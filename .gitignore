@@ -10,3 +10,5 @@ build/
 dist/
 *.spec
 *.egg-info/
+esp32-*.json
+com-delta*.json

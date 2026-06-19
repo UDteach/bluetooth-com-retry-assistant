@@ -25,6 +25,19 @@ Windows の Bluetooth 一覧、ペアリング、COM ポート作成まで再現
 
 この方法は実Bluetooth機器なので、Windows 側のペアリング済みデバイスにも表示されます。アプリの `--mock` とは違い、Windows の状態やペアリング UI の影響を受けます。
 
+詳細な実行順序と成功条件は `docs/esp32_hardware_test_checklist.md` を見てください。
+
+## ESP32 no-COM mock
+
+COMが出ないパターンを明示的に作る場合は、`hardware/esp32_no_com_mock/esp32_no_com_mock.ino` を使います。
+
+- Bluetooth名: `BT-NO-COM-MOCK`
+- Classic Bluetoothとして発見可能
+- Serial Port Profile は開始しない
+- WindowsにCOMポートが増えないことを `scripts/watch_com_delta.ps1 -ExpectNoNew` で確認する
+
+このパターンは「Bluetooth一覧には見えるがCOMが出ない機器」を再現するためのものです。
+
 ## 仮想 COM だけを使う場合
 
 COM ポート検出だけを Windows に見せたい場合は、com0com などの仮想 COM ドライバが選択肢になります。ただし Bluetooth のペアリング一覧や Bluetooth MAC との紐づきは再現しません。
