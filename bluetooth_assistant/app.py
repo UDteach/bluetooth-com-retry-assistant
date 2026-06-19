@@ -85,6 +85,7 @@ class BluetoothAssistantApp(tk.Tk):
         self._run_status_by_address: dict[str, str] = {}
         self._manual_devices: dict[str, BluetoothDevice] = {}
         self.manual_mac_var = tk.StringVar()
+        self.status_var = tk.StringVar(value="待機中")
 
         if backend is None:
             try:
@@ -114,7 +115,7 @@ class BluetoothAssistantApp(tk.Tk):
         self.scan_button = ttk.Button(toolbar, text="スキャン", command=self._scan_devices)
         self.scan_button.grid(row=0, column=0, padx=(0, 6))
 
-        self.retry_button = ttk.Button(toolbar, text="選択した機器を順番に接続", command=self._start_retry)
+        self.retry_button = ttk.Button(toolbar, text="接続してCOMを探す", command=self._start_retry)
         self.retry_button.grid(row=0, column=1, padx=6)
         Tooltip(
             self.retry_button,
@@ -131,11 +132,24 @@ class BluetoothAssistantApp(tk.Tk):
         self.clear_checks_button.grid(row=0, column=3, padx=6)
         Tooltip(self.clear_checks_button, "チェックをすべて外します。")
 
-        self.unpair_button = ttk.Button(toolbar, text="選択を解除", command=self._unpair_selected)
+        self.unpair_button = ttk.Button(toolbar, text="選択機器の登録を解除", command=self._unpair_selected)
         self.unpair_button.grid(row=0, column=4, padx=6)
+        Tooltip(
+            self.unpair_button,
+            "選択している機器のWindowsペアリング情報を消します。\n\n"
+            "間違った機器を選んでいないか確認してから使います。",
+        )
 
         self.stop_button = ttk.Button(toolbar, text="停止", command=self._stop_retry, state=tk.DISABLED)
         self.stop_button.grid(row=0, column=5, padx=6)
+
+        ttk.Label(toolbar, textvariable=self.status_var, anchor=tk.W).grid(
+            row=0,
+            column=6,
+            columnspan=8,
+            sticky="ew",
+            padx=(12, 0),
+        )
 
         ttk.Label(toolbar, text="回数").grid(row=1, column=0, padx=(0, 4), pady=(8, 0))
         self.max_attempts = tk.IntVar(value=5)
@@ -258,6 +272,7 @@ class BluetoothAssistantApp(tk.Tk):
         scan_seconds = self._scan_seconds_value()
         timeout_multiplier = timeout_multiplier_from_seconds(scan_seconds)
         self._set_busy(True)
+        self._set_status(f"スキャン中: {scan_seconds}秒")
         self._append_log(f"Bluetooth 機器をスキャンします（目安 {scan_seconds} 秒）")
 
         def work() -> None:
@@ -294,6 +309,7 @@ class BluetoothAssistantApp(tk.Tk):
         for device in selected_devices:
             self._run_status_by_address[device.address] = "待機中"
         self._set_busy(True, retrying=True)
+        self._set_status(f"COM探索中: {len(selected_devices)}台")
         self._refresh_tree_rows()
         config = RetryConfig(
             max_attempts=max(1, int(self.max_attempts.get())),
@@ -316,6 +332,7 @@ class BluetoothAssistantApp(tk.Tk):
                 for index, device in enumerate(selected_devices, start=1):
                     if self._stop_event.is_set():
                         break
+                    self._queue.put(("status", f"COM探索中: {index}/{len(selected_devices)} 台目"))
                     self._queue.put(
                         (
                             "log",
@@ -356,6 +373,7 @@ class BluetoothAssistantApp(tk.Tk):
             return
 
         self._set_busy(True)
+        self._set_status("登録解除中")
 
         def work() -> None:
             try:
@@ -374,6 +392,7 @@ class BluetoothAssistantApp(tk.Tk):
 
     def _stop_retry(self) -> None:
         self._stop_event.set()
+        self._set_status("停止要求を送信しました")
         self._append_log("停止要求を送信しました")
 
     def _pump_queue(self) -> None:
@@ -404,6 +423,8 @@ class BluetoothAssistantApp(tk.Tk):
                     self._refresh_tree_rows()
                 elif kind == "busy":
                     self._set_busy(bool(payload))
+                elif kind == "status":
+                    self._set_status(str(payload))
         except queue.Empty:
             pass
         self.after(100, self._pump_queue)
@@ -442,6 +463,8 @@ class BluetoothAssistantApp(tk.Tk):
         if selected_address in self._devices:
             self.tree.selection_set(selected_address)
         self._append_log(f"{len(merged_devices)} 台を表示しました / COM {len(ports)} 件")
+        if not self._is_worker_running():
+            self._set_status(f"待機中: {len(merged_devices)}台 / COM {len(ports)}件")
         self._update_selection_detail()
 
     def _refresh_tree_rows(self) -> None:
@@ -560,7 +583,8 @@ class BluetoothAssistantApp(tk.Tk):
         reason_text = " / ".join(assessment.reasons)
         self.detail_var.set(
             f"{selected.address} / {names or '(名前なし)'} / {selected.status_text} / "
-            f"{assessment.label}: {reason_text} / COM: {port_text} / チェック中: {checked_count}台"
+            f"{assessment.label}({assessment.score}点): {reason_text} / COM: {port_text} / "
+            f"チェック中: {checked_count}台"
         )
 
     def _set_busy(self, busy: bool, *, retrying: bool = False) -> None:
@@ -577,6 +601,8 @@ class BluetoothAssistantApp(tk.Tk):
         self.manual_mac_entry.configure(state=state)
         self.add_mac_button.configure(state=state)
         self.stop_button.configure(state=tk.NORMAL if self._retrying else tk.DISABLED)
+        if not busy and not self._devices:
+            self._set_status("待機中")
 
     def _is_worker_running(self) -> bool:
         return self._worker is not None and self._worker.is_alive()
@@ -584,6 +610,9 @@ class BluetoothAssistantApp(tk.Tk):
     def _append_log(self, message: str) -> None:
         self.log.insert(tk.END, message + "\n")
         self.log.see(tk.END)
+
+    def _set_status(self, message: str) -> None:
+        self.status_var.set(f"状態: {message}")
 
 
 def main(argv: list[str] | None = None) -> None:

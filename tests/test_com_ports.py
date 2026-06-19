@@ -3,7 +3,13 @@ import subprocess
 import unittest
 from unittest.mock import patch
 
-from bluetooth_assistant.com_ports import _dedupe_ports, _list_wmi_serial_ports
+from bluetooth_assistant.com_ports import (
+    _dedupe_ports,
+    _extract_com_name,
+    _list_pnp_com_ports,
+    _list_wmi_serial_ports,
+    list_com_ports,
+)
 from bluetooth_assistant.models import ComPortInfo
 
 
@@ -79,3 +85,41 @@ class ComPortTests(unittest.TestCase):
             side_effect=subprocess.TimeoutExpired("powershell", 12),
         ):
             self.assertEqual(_list_wmi_serial_ports(), [])
+
+    def test_extract_com_name_from_friendly_name(self):
+        self.assertEqual(_extract_com_name("Standard Serial over Bluetooth link (COM12)"), "COM12")
+        self.assertEqual(_extract_com_name("No port"), "")
+
+    def test_pnp_parser_extracts_com_port_from_name(self):
+        payload = json.dumps(
+            {
+                "Name": "Standard Serial over Bluetooth link (COM12)",
+                "Caption": "Standard Serial over Bluetooth link (COM12)",
+                "Description": "Bluetooth Serial",
+                "PNPDeviceID": r"BTHENUM\AABBCCDDEEFF",
+                "PNPClass": "Ports",
+            }
+        )
+
+        with patch("bluetooth_assistant.com_ports.os.name", "nt"), patch(
+            "bluetooth_assistant.com_ports.subprocess.run",
+            return_value=Completed(payload),
+        ):
+            ports = _list_pnp_com_ports()
+
+        self.assertEqual(len(ports), 1)
+        self.assertEqual(ports[0].device, "COM12")
+        self.assertEqual(ports[0].source, "pnp")
+
+    def test_windows_list_com_ports_uses_windows_sources_before_pyserial(self):
+        with patch("bluetooth_assistant.com_ports.os.name", "nt"), patch(
+            "bluetooth_assistant.com_ports._list_wmi_serial_ports",
+            return_value=[ComPortInfo("COM7", hwid="ID", source="wmi")],
+        ), patch(
+            "bluetooth_assistant.com_ports._list_pnp_com_ports",
+            return_value=[],
+        ), patch("bluetooth_assistant.com_ports._list_pyserial_ports") as pyserial_ports:
+            ports = list_com_ports()
+
+        self.assertEqual([port.device for port in ports], ["COM7"])
+        pyserial_ports.assert_not_called()

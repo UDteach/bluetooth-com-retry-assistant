@@ -31,6 +31,7 @@ py -m bluetooth_assistant --mock
 - `全選択` / `選択クリア`: 表示中の機器をまとめてチェック、またはチェック解除します。
 - `MAC指定`: `AA:BB:CC:DD:EE:FF` 形式で入力した機器を一覧に追加し、チェックを付けます。スキャンに出ないが MAC アドレスは分かる機器向けです。
 - `状態`: Windows側のペアリング状態に加えて、連続処理中は `待機中` / `処理中` / `成功` / `失敗` / `停止` を表示します。
+- `COM候補`: `COMあり` / `COM候補 高` / `COM候補 中` / `COM候補 低` を表示します。行を選ぶと理由も下部に表示します。
 - `ログ`: 何台目を処理しているか、ペアリング中か、COMポート待ちか、成功/失敗したかを時系列で表示します。
 - `スキャン秒`: Bluetooth機器を探す目安時間です。Windowsがすぐに結果を返した場合も、この秒数までは再スキャンします。
 - `COM作成を促す`: ペアリング後に、Windowsへ「この機器のCOMポートを作って」と依頼します。COMポートが必要なBluetooth機器ではオン推奨です。
@@ -46,6 +47,7 @@ Windows 側にも見える形で再現したい場合は、次のどちらかを
 - `docs/virtual_com_mock.md`: 仮想 COM ドライバで Windows に COM ポートを表示し、その COM 名を `--mock-com-port` でアプリ内 mock に割り当てます。Bluetooth ペアリング一覧は再現しませんが、COM 検出の動きは仮想で確認できます。
 - `docs/windows_visible_mock.md`: ESP32 を Classic Bluetooth SPP 機器として動かし、Windows の Bluetooth 一覧、ペアリング、COM ポート生成を再現します。
 - `docs/esp32_hardware_test_checklist.md`: ESP32 到着後に実行する順番、成功条件、失敗時の確認点です。
+- `docs/research_oss_improvements.md`: OSS/一次情報を調べた結果と、採用/不採用の理由です。
 
 ESP32 実機では `BT-COM-MOCK` で COM が出るパターン、`BT-NO-COM-MOCK` で COM が出ないパターンを分けて確認できます。
 
