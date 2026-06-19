@@ -9,7 +9,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from .mock_backend import MockBluetoothBackend
-from .models import BluetoothDevice, ComPortInfo, find_matching_ports, merge_duplicate_devices
+from .models import BluetoothDevice, ComPortInfo, find_matching_ports, merge_duplicate_devices, normalize_address
 from .retry import BluetoothBackend, PairingRetrier, RetryConfig, RetryEvent
 from .windows_bluetooth import BluetoothError, UnsupportedPlatformError, WindowsBluetoothBackend
 
@@ -19,6 +19,17 @@ DEFAULT_SCAN_SECONDS = 10
 
 def timeout_multiplier_from_seconds(seconds: int) -> int:
     return max(1, min(48, math.ceil(max(1, seconds) / BLUETOOTH_INQUIRY_UNIT_SECONDS)))
+
+
+def manual_device_from_address(address: str) -> BluetoothDevice:
+    return BluetoothDevice(normalize_address(address), name="手入力", remembered=True, last_seen="手入力")
+
+
+def merge_with_manual_devices(
+    devices: list[BluetoothDevice],
+    manual_devices: dict[str, BluetoothDevice],
+) -> list[BluetoothDevice]:
+    return merge_duplicate_devices([*devices, *manual_devices.values()])
 
 
 class Tooltip:
@@ -71,6 +82,8 @@ class BluetoothAssistantApp(tk.Tk):
         self._ports: list[ComPortInfo] = []
         self._checked_addresses: set[str] = set()
         self._run_status_by_address: dict[str, str] = {}
+        self._manual_devices: dict[str, BluetoothDevice] = {}
+        self.manual_mac_var = tk.StringVar()
 
         if backend is None:
             try:
@@ -105,7 +118,8 @@ class BluetoothAssistantApp(tk.Tk):
         Tooltip(
             self.retry_button,
             "チェックした機器を上から順番に処理します。\n\n"
-            "1台ずつペアリングし、COMポートが見つかったら次の機器へ進みます。",
+            "各機器ごとに「解除 -> ペアリング -> COM待ち」を繰り返し、"
+            "COMポートが見つかったら次の機器へ進みます。",
         )
 
         self.check_all_button = ttk.Button(toolbar, text="全選択", command=self._check_all_visible)
@@ -148,32 +162,35 @@ class BluetoothAssistantApp(tk.Tk):
             "Windowsがすぐに結果を返した場合も、この秒数までは再スキャンします。",
         )
 
-        self.clean_first = tk.BooleanVar(value=False)
-        clean_first_check = ttk.Checkbutton(
-            toolbar,
-            text="最初に接続情報を消す",
-            variable=self.clean_first,
-        )
-        clean_first_check.grid(row=1, column=6, padx=(12, 4), pady=(8, 0))
-        Tooltip(
-            clean_first_check,
-            "1回目のペアリング前に、Windows側に残っているこの機器の登録情報を消します。\n\n"
-            "同じ機器が何度も失敗する、古い接続情報が残っていそうな時に使います。\n"
-            "迷う場合はオフのままで大丈夫です。",
-        )
-
         self.enable_spp = tk.BooleanVar(value=True)
         enable_spp_check = ttk.Checkbutton(
             toolbar,
             text="COM作成を促す",
             variable=self.enable_spp,
         )
-        enable_spp_check.grid(row=1, column=7, padx=4, pady=(8, 0))
+        enable_spp_check.grid(row=1, column=6, padx=(12, 4), pady=(8, 0))
         Tooltip(
             enable_spp_check,
             "ペアリング後に、Windowsへ「この機器のCOMポートを作って」と依頼します。\n\n"
             "COMポートが必要なBluetooth機器ではオン推奨です。\n"
             "機器がCOM接続に対応していない場合は、オンでもCOMは出ません。",
+        )
+
+        ttk.Label(toolbar, text="MAC指定").grid(row=2, column=0, padx=(0, 4), pady=(8, 0))
+        self.manual_mac_entry = ttk.Entry(toolbar, width=22, textvariable=self.manual_mac_var)
+        self.manual_mac_entry.grid(row=2, column=1, columnspan=2, sticky="ew", pady=(8, 0))
+        self.manual_mac_entry.bind("<Return>", lambda _event: self._add_manual_mac())
+        Tooltip(
+            self.manual_mac_entry,
+            "AA:BB:CC:DD:EE:FF 形式で入力します。\n\n"
+            "スキャンに出ない機器でも、MACアドレスが分かっていれば対象に追加できます。",
+        )
+        self.add_mac_button = ttk.Button(toolbar, text="MAC追加", command=self._add_manual_mac)
+        self.add_mac_button.grid(row=2, column=3, padx=6, pady=(8, 0))
+        Tooltip(
+            self.add_mac_button,
+            "入力したMACアドレスを一覧に追加し、チェックを付けます。\n\n"
+            "その後、接続ボタンでCOMが出るまで解除とペアリングを繰り返せます。",
         )
 
         main = ttk.PanedWindow(self, orient=tk.VERTICAL)
@@ -279,11 +296,14 @@ class BluetoothAssistantApp(tk.Tk):
             max_attempts=max(1, int(self.max_attempts.get())),
             inquiry_timeout_multiplier=timeout_multiplier_from_seconds(self._scan_seconds_value()),
             com_wait_seconds=max(3, int(self.wait_seconds.get())),
-            clean_before_first_attempt=bool(self.clean_first.get()),
+            unpair_before_each_attempt=True,
             enable_serial_service=bool(self.enable_spp.get()),
         )
         retrier = PairingRetrier(self._backend)
-        self._append_log(f"{len(selected_devices)} 台を順番に処理します")
+        self._append_log(
+            f"{len(selected_devices)} 台を順番に処理します"
+            "（各試行で 解除 -> ペアリング -> COM待ち）"
+        )
 
         def on_event(event: RetryEvent) -> None:
             self._queue.put(("retry_event", event))
@@ -385,17 +405,40 @@ class BluetoothAssistantApp(tk.Tk):
             pass
         self.after(100, self._pump_queue)
 
+    def _add_manual_mac(self) -> None:
+        if self._is_worker_running():
+            return
+        raw_address = self.manual_mac_var.get().strip()
+        try:
+            device = manual_device_from_address(raw_address)
+        except ValueError:
+            messagebox.showerror(
+                "MACアドレスを確認してください",
+                "AA:BB:CC:DD:EE:FF のように12桁の16進数で入力してください。",
+            )
+            return
+
+        self._manual_devices[device.address] = device
+        self._checked_addresses.add(device.address)
+        self.manual_mac_var.set("")
+        self._update_devices(list(self._devices.values()), self._ports)
+        if self.tree.exists(device.address):
+            self.tree.selection_set(device.address)
+            self.tree.see(device.address)
+        self._append_log(f"{device.address} を手入力で追加しました")
+
     def _update_devices(self, devices: list[BluetoothDevice], ports: list[ComPortInfo]) -> None:
-        self._devices = {device.address: device for device in devices}
+        merged_devices = merge_with_manual_devices(devices, self._manual_devices)
+        self._devices = {device.address: device for device in merged_devices}
         self._checked_addresses.intersection_update(self._devices)
         self._ports = ports
         selected_address = self.tree.selection()[0] if self.tree.selection() else ""
         self.tree.delete(*self.tree.get_children())
-        for device in devices:
+        for device in merged_devices:
             self.tree.insert("", tk.END, iid=device.address, values=self._row_values(device))
         if selected_address in self._devices:
             self.tree.selection_set(selected_address)
-        self._append_log(f"{len(devices)} 台を表示しました / COM {len(ports)} 件")
+        self._append_log(f"{len(merged_devices)} 台を表示しました / COM {len(ports)} 件")
         self._update_selection_detail()
 
     def _refresh_tree_rows(self) -> None:
@@ -524,6 +567,8 @@ class BluetoothAssistantApp(tk.Tk):
         self.check_all_button.configure(state=state)
         self.clear_checks_button.configure(state=state)
         self.unpair_button.configure(state=state)
+        self.manual_mac_entry.configure(state=state)
+        self.add_mac_button.configure(state=state)
         self.stop_button.configure(state=tk.NORMAL if self._retrying else tk.DISABLED)
 
     def _is_worker_running(self) -> bool:
@@ -537,9 +582,25 @@ class BluetoothAssistantApp(tk.Tk):
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="BluetoothAssistant Tkinter app.")
     parser.add_argument("--mock", action="store_true", help="Use an in-memory mock Bluetooth backend.")
+    parser.add_argument("--mock-target-address", default="AA:BB:CC:DD:EE:FF", help="Target MAC address for --mock.")
+    parser.add_argument("--mock-com-port", default="COM12", help="COM port name returned by --mock after success.")
+    parser.add_argument(
+        "--mock-appear-after",
+        type=int,
+        default=2,
+        help="Number of mock pair attempts before --mock returns a COM port.",
+    )
     parser.add_argument("--no-auto-scan", action="store_true", help="Start the app without the initial scan.")
     args = parser.parse_args(argv)
 
-    backend = MockBluetoothBackend() if args.mock else None
+    backend = (
+        MockBluetoothBackend(
+            target_address=args.mock_target_address,
+            target_com_port=args.mock_com_port,
+            appear_after_pair_count=args.mock_appear_after,
+        )
+        if args.mock
+        else None
+    )
     app = BluetoothAssistantApp(backend=backend, auto_scan=not args.no_auto_scan)
     app.mainloop()

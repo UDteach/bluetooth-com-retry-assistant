@@ -38,8 +38,17 @@ def run_safe_diagnostics(*, scan_bluetooth: bool = False) -> list[CheckResult]:
     return results
 
 
-def run_mock_retry() -> list[CheckResult]:
-    backend = MockBluetoothBackend(appear_after_pair_count=2)
+def run_mock_retry(
+    *,
+    target_address: str = "AA:BB:CC:DD:EE:FF",
+    target_com_port: str = "COM12",
+    appear_after_pair_count: int = 2,
+) -> list[CheckResult]:
+    backend = MockBluetoothBackend(
+        target_address=target_address,
+        target_com_port=target_com_port,
+        appear_after_pair_count=appear_after_pair_count,
+    )
     events: list[str] = []
     outcome = PairingRetrier(backend, sleeper=lambda _seconds: None).run(
         backend.target_address,
@@ -49,12 +58,16 @@ def run_mock_retry() -> list[CheckResult]:
     return [
         CheckResult(
             "mock_retry",
-            outcome.success and outcome.ports and outcome.ports[0].device == "COM12",
+            outcome.success and outcome.ports and outcome.ports[0].device == target_com_port,
             outcome.message,
             {
+                "target_address": backend.target_address,
+                "target_com_port": target_com_port,
                 "pair_count": backend.pair_count,
                 "unpair_count": backend.unpair_count,
                 "service_count": backend.service_count,
+                "slow_device_pair_count": backend.pair_count_for("11:22:33:44:55:66"),
+                "history": backend.history,
                 "events": events,
                 "ports": [asdict(port) for port in outcome.ports],
             },
@@ -121,11 +134,29 @@ def main(argv: list[str] | None = None) -> int:
         help="Also run a read-only Bluetooth device scan. This does not pair or unpair devices.",
     )
     parser.add_argument("--mock-retry", action="store_true", help="Run the built-in mock pairing retry scenario.")
+    parser.add_argument(
+        "--mock-target-address",
+        default="AA:BB:CC:DD:EE:FF",
+        help="Target MAC address for --mock-retry.",
+    )
+    parser.add_argument("--mock-com-port", default="COM12", help="COM port name expected from --mock-retry.")
+    parser.add_argument(
+        "--mock-appear-after",
+        type=int,
+        default=2,
+        help="Number of mock pair attempts before --mock-retry returns a COM port.",
+    )
     args = parser.parse_args(argv)
 
     results = run_safe_diagnostics(scan_bluetooth=args.scan_bluetooth)
     if args.mock_retry:
-        results.extend(run_mock_retry())
+        results.extend(
+            run_mock_retry(
+                target_address=args.mock_target_address,
+                target_com_port=args.mock_com_port,
+                appear_after_pair_count=args.mock_appear_after,
+            )
+        )
 
     if args.json:
         print(json.dumps([asdict(result) for result in results], ensure_ascii=True, indent=2))

@@ -2,7 +2,7 @@ import threading
 import unittest
 
 from bluetooth_assistant.mock_backend import MockBluetoothBackend
-from bluetooth_assistant.models import OperationResult
+from bluetooth_assistant.models import OperationResult, find_matching_ports
 from bluetooth_assistant.retry import PairingRetrier, RetryConfig
 
 
@@ -22,8 +22,22 @@ class RetryTests(unittest.TestCase):
         self.assertEqual(outcome.attempts, 2)
         self.assertEqual(outcome.ports[0].device, "COM12")
         self.assertEqual(backend.pair_count, 2)
-        self.assertGreaterEqual(backend.unpair_count, 1)
+        self.assertEqual(backend.unpair_count, 2)
         self.assertIn("success", [event.stage for event in events])
+
+    def test_unpair_happens_before_each_pair_attempt(self):
+        backend = MockBluetoothBackend(appear_after_pair_count=3)
+
+        outcome = PairingRetrier(backend, sleeper=lambda _seconds: None).run(
+            "AA:BB:CC:DD:EE:FF",
+            RetryConfig(max_attempts=3, com_wait_seconds=0, settle_seconds=0),
+        )
+
+        self.assertTrue(outcome.success)
+        self.assertEqual(
+            [entry[0] for entry in backend.history if entry[0] in {"unpair", "pair"}],
+            ["unpair", "pair", "unpair", "pair", "unpair", "pair"],
+        )
 
     def test_existing_mock_com_port_short_circuits(self):
         backend = MockBluetoothBackend(appear_after_pair_count=0)
@@ -37,6 +51,7 @@ class RetryTests(unittest.TestCase):
         self.assertTrue(outcome.success)
         self.assertEqual(outcome.attempts, 0)
         self.assertEqual(backend.pair_count, 0)
+        self.assertEqual(backend.unpair_count, 0)
 
     def test_stop_event_exits_before_pairing(self):
         backend = MockBluetoothBackend(appear_after_pair_count=10)
@@ -63,7 +78,7 @@ class RetryTests(unittest.TestCase):
 
         self.assertTrue(outcome.success)
         self.assertEqual(backend.pair_count, 2)
-        self.assertEqual(backend.unpair_count, 1)
+        self.assertEqual(backend.unpair_count, 2)
 
     def test_service_can_be_disabled(self):
         backend = MockBluetoothBackend(appear_after_pair_count=1)
@@ -106,6 +121,43 @@ class RetryTests(unittest.TestCase):
         self.assertFalse(outcome.success)
         self.assertTrue(outcome.stopped)
 
+    def test_multiple_mock_devices_are_matched_by_target_mac(self):
+        backend = MockBluetoothBackend()
+
+        first = PairingRetrier(backend, sleeper=lambda _seconds: None).run(
+            "11:22:33:44:55:66",
+            RetryConfig(max_attempts=3, com_wait_seconds=0, settle_seconds=0),
+        )
+
+        self.assertTrue(first.success)
+        self.assertEqual(first.ports[0].device, "COM13")
+        self.assertEqual(backend.pair_count_for("11:22:33:44:55:66"), 3)
+        self.assertEqual(backend.pair_count, 0)
+        self.assertFalse(find_matching_ports("AA:BB:CC:DD:EE:FF", first.ports))
+
+    def test_manual_unknown_mac_can_be_mocked(self):
+        backend = MockBluetoothBackend()
+
+        outcome = PairingRetrier(backend, sleeper=lambda _seconds: None).run(
+            "33:44:55:66:77:88",
+            RetryConfig(max_attempts=2, com_wait_seconds=0, settle_seconds=0),
+        )
+
+        self.assertTrue(outcome.success)
+        self.assertEqual(outcome.ports[0].device, "COM23")
+        self.assertEqual(backend.pair_count_for("33:44:55:66:77:88"), 2)
+
+    def test_mock_target_com_port_can_be_configured(self):
+        backend = MockBluetoothBackend(target_com_port="COM98", appear_after_pair_count=1)
+
+        outcome = PairingRetrier(backend, sleeper=lambda _seconds: None).run(
+            "AA:BB:CC:DD:EE:FF",
+            RetryConfig(max_attempts=1, com_wait_seconds=0, settle_seconds=0),
+        )
+
+        self.assertTrue(outcome.success)
+        self.assertEqual(outcome.ports[0].device, "COM98")
+
 
 class ScanFailingBackend(MockBluetoothBackend):
     def list_devices(self, *, issue_inquiry=True, timeout_multiplier=8):
@@ -115,6 +167,33 @@ class ScanFailingBackend(MockBluetoothBackend):
 class NoPortBackend(MockBluetoothBackend):
     def list_com_ports(self):
         return []
+
+
+class UnpairRaisingBackend(MockBluetoothBackend):
+    def unpair(self, address):
+        raise RuntimeError("unpair exploded")
+
+
+class PairRaisingBackend(MockBluetoothBackend):
+    def pair(self, address):
+        raise RuntimeError("pair exploded")
+
+
+class ServiceRaisingBackend(MockBluetoothBackend):
+    def enable_serial_service(self, address):
+        raise RuntimeError("service exploded")
+
+
+class PortRaisingOnceBackend(MockBluetoothBackend):
+    def __init__(self):
+        super().__init__(appear_after_pair_count=1)
+        self._raised = False
+
+    def list_com_ports(self):
+        if not self._raised:
+            self._raised = True
+            raise RuntimeError("ports exploded")
+        return super().list_com_ports()
 
 
 class RetryFailureTests(unittest.TestCase):
@@ -143,6 +222,61 @@ class RetryFailureTests(unittest.TestCase):
         self.assertFalse(outcome.stopped)
         self.assertEqual(outcome.attempts, 2)
         self.assertEqual(backend.pair_count, 2)
+
+    def test_unpair_exception_is_logged_and_pairing_continues(self):
+        backend = UnpairRaisingBackend(appear_after_pair_count=1)
+        events = []
+
+        outcome = PairingRetrier(backend, sleeper=lambda _seconds: None).run(
+            "AA:BB:CC:DD:EE:FF",
+            RetryConfig(max_attempts=1, com_wait_seconds=0, settle_seconds=0),
+            events.append,
+        )
+
+        self.assertTrue(outcome.success)
+        self.assertIn("warning", [event.stage for event in events])
+        self.assertEqual(backend.pair_count, 1)
+
+    def test_pair_exception_is_logged_and_retried_until_failed(self):
+        backend = PairRaisingBackend(appear_after_pair_count=1)
+        events = []
+
+        outcome = PairingRetrier(backend, sleeper=lambda _seconds: None).run(
+            "AA:BB:CC:DD:EE:FF",
+            RetryConfig(max_attempts=2, com_wait_seconds=0, settle_seconds=0),
+            events.append,
+        )
+
+        self.assertFalse(outcome.success)
+        self.assertEqual(outcome.attempts, 2)
+        self.assertEqual([entry[0] for entry in backend.history], ["unpair", "unpair"])
+        self.assertIn("warning", [event.stage for event in events])
+
+    def test_service_exception_does_not_stop_com_polling(self):
+        backend = ServiceRaisingBackend(appear_after_pair_count=1)
+        events = []
+
+        outcome = PairingRetrier(backend, sleeper=lambda _seconds: None).run(
+            "AA:BB:CC:DD:EE:FF",
+            RetryConfig(max_attempts=1, com_wait_seconds=0, settle_seconds=0),
+            events.append,
+        )
+
+        self.assertTrue(outcome.success)
+        self.assertIn("warning", [event.stage for event in events])
+
+    def test_com_port_exception_is_logged_and_retried(self):
+        backend = PortRaisingOnceBackend()
+        events = []
+
+        outcome = PairingRetrier(backend, sleeper=lambda _seconds: None).run(
+            "AA:BB:CC:DD:EE:FF",
+            RetryConfig(max_attempts=1, com_wait_seconds=0, settle_seconds=0),
+            events.append,
+        )
+
+        self.assertTrue(outcome.success)
+        self.assertIn("warning", [event.stage for event in events])
 
 
 if __name__ == "__main__":

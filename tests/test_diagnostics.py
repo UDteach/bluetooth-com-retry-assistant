@@ -22,6 +22,20 @@ class DiagnosticsTests(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertTrue(results[0].ok)
         self.assertEqual(results[0].data["pair_count"], 2)
+        self.assertEqual(results[0].data["unpair_count"], 2)
+        self.assertEqual(results[0].data["slow_device_pair_count"], 0)
+        self.assertEqual(
+            [entry[0] for entry in results[0].data["history"]],
+            ["unpair", "pair", "service", "unpair", "pair", "service"],
+        )
+
+    def test_mock_retry_diagnostic_accepts_custom_com_port(self):
+        results = run_mock_retry(target_com_port="COM98", appear_after_pair_count=1)
+
+        self.assertEqual(len(results), 1)
+        self.assertTrue(results[0].ok)
+        self.assertEqual(results[0].data["target_com_port"], "COM98")
+        self.assertEqual(results[0].data["ports"][0]["device"], "COM98")
 
     def test_json_main_exit_code_for_mock_retry(self):
         stream = io.StringIO()
