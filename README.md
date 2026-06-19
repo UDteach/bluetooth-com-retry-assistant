@@ -11,7 +11,8 @@ pip install -r requirements.txt
 py -m bluetooth_assistant
 ```
 
-実機なしで画面の流れを確認する場合:
+実機なしで画面の流れを確認する場合は、テストモードで起動します。
+このモードの機器はアプリ内だけのデータで、Windows の Bluetooth 一覧には表示されません。
 
 ```powershell
 py -m bluetooth_assistant --mock
@@ -23,7 +24,7 @@ py -m bluetooth_assistant --mock
 - スキャンに出ない機器でも、MAC アドレスが分かっていれば `MAC指定` から処理対象に追加できます。
 - COM ポートは `Win32_SerialPort` / pySerial の `hwid` / `PNPDeviceID` から MAC アドレスを照合します。
 - ペアリング後に Serial Port Profile のサービス有効化を試み、COM ポート作成を促します。
-- 実機 Bluetooth は Windows の状態やペアリング UI に依存するため、自動テストでは mock backend でリトライ制御を検証します。
+- 実機 Bluetooth は Windows の状態やペアリング UI に依存するため、自動テストではテスト用バックエンドでリトライ制御を検証します。
 
 ## 画面の設定
 
@@ -33,25 +34,27 @@ py -m bluetooth_assistant --mock
 - `状態`: Windows側のペアリング状態に加えて、連続処理中は `待機中` / `処理中` / `成功` / `失敗` / `停止` を表示します。
 - `COM候補`: `COMあり` / `COM候補 高` / `COM候補 中` / `COM候補 低` を表示します。行を選ぶと理由も下部に表示します。
 - `ログ`: 何台目を処理しているか、ペアリング中か、COMポート待ちか、成功/失敗したかを時系列で表示します。
-- `スキャン秒`: Bluetooth機器を探す目安時間です。Windowsがすぐに結果を返した場合も、この秒数までは再スキャンします。
+- `最大試行回数`: 1台の機器に対して、解除 -> ペアリング -> COM待ちを最大何回まで繰り返すかです。
+- `1回のCOM待ち秒`: ペアリング後にCOMポートが出るまで、1回の試行で待つ秒数です。
+- `スキャン時間（秒）`: Bluetooth機器を探す目安時間です。Windowsがすぐに結果を返した場合も、この秒数までは再スキャンします。
 - `COM作成を促す`: ペアリング後に、Windowsへ「この機器のCOMポートを作って」と依頼します。COMポートが必要なBluetooth機器ではオン推奨です。
 
 接続処理中は、各試行で必ず対象 MAC の接続情報を解除してからペアリングします。古いペアリング情報が残って COM が出ないケースを避けるためです。
 
-## Mock と仮想再現
+## テストモードと仮想再現
 
-`--mock` はアプリ内と自動テスト用の mock です。Windows 設定の Bluetooth ペアリング済みデバイスには表示されません。
+`--mock` はアプリ内と自動テスト用のテストモードです。Windows 設定の Bluetooth ペアリング済みデバイスには表示されません。
 
 Windows 側にも見える形で再現したい場合は、次のどちらかを使います。
 
-- `docs/virtual_com_mock.md`: 仮想 COM ドライバで Windows に COM ポートを表示し、その COM 名を `--mock-com-port` でアプリ内 mock に割り当てます。Bluetooth ペアリング一覧は再現しませんが、COM 検出の動きは仮想で確認できます。
+- `docs/virtual_com_mock.md`: 仮想 COM ドライバで Windows に COM ポートを表示し、その COM 名を `--mock-com-port` でアプリ内テストデータに割り当てます。Bluetooth ペアリング一覧は再現しませんが、COM 検出の動きは仮想で確認できます。
 - `docs/windows_visible_mock.md`: ESP32 を Classic Bluetooth SPP 機器として動かし、Windows の Bluetooth 一覧、ペアリング、COM ポート生成を再現します。
 - `docs/esp32_hardware_test_checklist.md`: ESP32 到着後に実行する順番、成功条件、失敗時の確認点です。
 - `docs/research_oss_improvements.md`: OSS/一次情報を調べた結果と、採用/不採用の理由です。
 
 ESP32 実機では `BT-COM-MOCK` で COM が出るパターン、`BT-NO-COM-MOCK` で COM が出ないパターンを分けて確認できます。
 
-mock の MAC や COM 名は起動時に指定できます。
+テストモードの MAC や COM 名は起動時に指定できます。
 
 ```powershell
 py -m bluetooth_assistant --mock --mock-target-address AA:BB:CC:DD:EE:FF --mock-com-port COM98
@@ -101,7 +104,7 @@ pip install -r requirements-dev.txt
 .\dist\BluetoothAssistant.exe --help
 ```
 
-ビルド成果物は `dist\BluetoothAssistant.exe` です。実機なしの画面確認は次でできます。
+ビルド成果物は `dist\BluetoothAssistant.exe` です。実機なしの画面確認はテストモードでできます。
 
 ```powershell
 .\dist\BluetoothAssistant.exe --mock

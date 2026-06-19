@@ -14,7 +14,9 @@ class MockDeviceScenario:
     appear_after_pair_count: int | None = 2
     fail_pair_attempts: set[int] = field(default_factory=set)
     duplicate_devices: bool = False
-    service_result: OperationResult = field(default_factory=lambda: OperationResult(True, "mock service enabled"))
+    service_result: OperationResult = field(
+        default_factory=lambda: OperationResult(True, "テスト用: COM作成依頼を成功扱いにしました")
+    )
     remembered: bool = True
     class_of_device: int = 0x001F00
 
@@ -44,7 +46,7 @@ class MockBluetoothBackend:
         self._scenarios: dict[str, MockDeviceScenario] = {}
 
         if scenarios is None:
-            service_result = service_result or OperationResult(True, "mock service enabled")
+            service_result = service_result or OperationResult(True, "テスト用: COM作成依頼を成功扱いにしました")
             scenarios = self._default_scenarios(
                 self.target_address,
                 appear_after_pair_count,
@@ -92,17 +94,17 @@ class MockBluetoothBackend:
                     connected=paired,
                     remembered=scenario.remembered or paired,
                     authenticated=paired,
-                    last_seen=f"mock scan {self.scan_count}",
+                    last_seen=f"テストスキャン {self.scan_count}",
                 )
             )
             if scenario.duplicate_devices:
                 devices.append(
                     BluetoothDevice(
                         address.replace(":", ""),
-                        name=f"{scenario.name} Duplicate",
+                        name=f"{scenario.name}（同じMAC）",
                         class_of_device=scenario.class_of_device,
                         remembered=True,
-                        last_seen=f"mock duplicate {self.scan_count}",
+                        last_seen=f"テスト重複 {self.scan_count}",
                     )
                 )
         return merge_duplicate_devices(devices)
@@ -115,10 +117,10 @@ class MockBluetoothBackend:
 
         if count in scenario.fail_pair_attempts:
             self._paired[scenario.address] = False
-            return OperationResult(False, f"mock pair failed at attempt {count}", 1)
+            return OperationResult(False, f"テスト用: ペアリング失敗（{count}回目）", 1)
 
         self._paired[scenario.address] = True
-        return OperationResult(True, f"mock pair succeeded at attempt {count}")
+        return OperationResult(True, f"テスト用: ペアリング成功（{count}回目）")
 
     def unpair(self, address: str) -> OperationResult:
         scenario = self._scenario_for(address, create=True)
@@ -126,7 +128,7 @@ class MockBluetoothBackend:
         self._unpair_counts[scenario.address] = count
         self._paired[scenario.address] = False
         self.history.append(("unpair", scenario.address, count))
-        return OperationResult(True, f"mock unpair {count}")
+        return OperationResult(True, f"テスト用: 登録解除（{count}回目）")
 
     def enable_serial_service(self, address: str) -> OperationResult:
         scenario = self._scenario_for(address, create=True)
@@ -161,7 +163,7 @@ class MockBluetoothBackend:
         com_number = 20 + len(self._scenarios)
         scenario = MockDeviceScenario(
             normalized,
-            name="Manual Mock Device",
+            name="手入力テスト機器",
             com_port=f"COM{com_number}",
             appear_after_pair_count=2,
             duplicate_devices=False,
@@ -181,7 +183,7 @@ class MockBluetoothBackend:
         return [
             MockDeviceScenario(
                 target_address,
-                name="Mock SPP Device",
+                name="テスト用 COM 機器",
                 com_port=target_com_port,
                 appear_after_pair_count=appear_after_pair_count,
                 fail_pair_attempts=fail_pair_attempts,
@@ -190,14 +192,14 @@ class MockBluetoothBackend:
             ),
             MockDeviceScenario(
                 "11:22:33:44:55:66",
-                name="Mock Slow Device",
+                name="テスト用 COM遅延機器",
                 com_port="COM13",
                 appear_after_pair_count=3,
                 duplicate_devices=True,
             ),
             MockDeviceScenario(
                 "22:33:44:55:66:77",
-                name="Mock No COM Device",
+                name="テスト用 COMなし機器",
                 com_port="",
                 appear_after_pair_count=None,
             ),

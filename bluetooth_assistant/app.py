@@ -22,6 +22,17 @@ def timeout_multiplier_from_seconds(seconds: int) -> int:
     return max(1, min(48, math.ceil(max(1, seconds) / BLUETOOTH_INQUIRY_UNIT_SECONDS)))
 
 
+def window_title_for_mode(mock_mode: bool) -> str:
+    if mock_mode:
+        return "BluetoothAssistant - テストモード"
+    return "BluetoothAssistant"
+
+
+def format_status_text(message: str, *, mock_mode: bool = False) -> str:
+    prefix = "テストモード / " if mock_mode else ""
+    return f"状態: {prefix}{message}"
+
+
 def manual_device_from_address(address: str) -> BluetoothDevice:
     return BluetoothDevice(normalize_address(address), name="手入力", remembered=True, last_seen="手入力")
 
@@ -69,9 +80,16 @@ class Tooltip:
 
 
 class BluetoothAssistantApp(tk.Tk):
-    def __init__(self, backend: BluetoothBackend | None = None, *, auto_scan: bool = True) -> None:
+    def __init__(
+        self,
+        backend: BluetoothBackend | None = None,
+        *,
+        auto_scan: bool = True,
+        mock_mode: bool = False,
+    ) -> None:
         super().__init__()
-        self.title("BluetoothAssistant")
+        self._mock_mode = mock_mode
+        self.title(window_title_for_mode(mock_mode))
         self.geometry("1040x680")
         self.minsize(900, 560)
 
@@ -85,7 +103,7 @@ class BluetoothAssistantApp(tk.Tk):
         self._run_status_by_address: dict[str, str] = {}
         self._manual_devices: dict[str, BluetoothDevice] = {}
         self.manual_mac_var = tk.StringVar()
-        self.status_var = tk.StringVar(value="待機中")
+        self.status_var = tk.StringVar(value=format_status_text("待機中", mock_mode=self._mock_mode))
 
         if backend is None:
             try:
@@ -100,6 +118,8 @@ class BluetoothAssistantApp(tk.Tk):
             self._backend = backend
 
         self._build_ui()
+        if self._mock_mode:
+            self._append_log("テストモードです。WindowsのBluetooth一覧ではなく、アプリ内のテスト用データを使います。")
         self.after(100, self._pump_queue)
         if auto_scan:
             self._scan_devices()
@@ -151,25 +171,46 @@ class BluetoothAssistantApp(tk.Tk):
             padx=(12, 0),
         )
 
-        ttk.Label(toolbar, text="回数").grid(row=1, column=0, padx=(0, 4), pady=(8, 0))
+        max_attempts_label = ttk.Label(toolbar, text="最大試行回数")
+        max_attempts_label.grid(row=1, column=0, padx=(0, 4), pady=(8, 0))
         self.max_attempts = tk.IntVar(value=5)
-        ttk.Spinbox(toolbar, from_=1, to=50, width=5, textvariable=self.max_attempts).grid(row=1, column=1, pady=(8, 0))
+        max_attempts_box = ttk.Spinbox(toolbar, from_=1, to=50, width=6, textvariable=self.max_attempts)
+        max_attempts_box.grid(row=1, column=1, pady=(8, 0))
+        max_attempts_help = (
+            "1台の機器に対して、解除 -> ペアリング -> COM待ちを最大何回まで繰り返すかです。"
+        )
+        Tooltip(max_attempts_label, max_attempts_help)
+        Tooltip(max_attempts_box, max_attempts_help)
 
-        ttk.Label(toolbar, text="COM待ち秒").grid(row=1, column=2, padx=(12, 4), pady=(8, 0))
+        wait_seconds_label = ttk.Label(toolbar, text="1回のCOM待ち秒")
+        wait_seconds_label.grid(row=1, column=2, padx=(12, 4), pady=(8, 0))
         self.wait_seconds = tk.IntVar(value=20)
-        ttk.Spinbox(toolbar, from_=3, to=300, width=5, textvariable=self.wait_seconds).grid(
+        wait_seconds_box = ttk.Spinbox(toolbar, from_=3, to=300, width=6, textvariable=self.wait_seconds)
+        wait_seconds_box.grid(
             row=1,
             column=3,
             pady=(8, 0),
         )
+        wait_seconds_help = (
+            "ペアリング後にCOMポートが出るまで待つ秒数です。"
+            "この秒数で出なければ、次の試行へ進みます。"
+        )
+        Tooltip(wait_seconds_label, wait_seconds_help)
+        Tooltip(wait_seconds_box, wait_seconds_help)
 
-        ttk.Label(toolbar, text="スキャン秒").grid(row=1, column=4, padx=(12, 4), pady=(8, 0))
+        scan_seconds_label = ttk.Label(toolbar, text="スキャン時間（秒）")
+        scan_seconds_label.grid(row=1, column=4, padx=(12, 4), pady=(8, 0))
         self.scan_seconds = tk.IntVar(value=DEFAULT_SCAN_SECONDS)
-        scan_seconds_box = ttk.Spinbox(toolbar, from_=2, to=60, width=5, textvariable=self.scan_seconds)
+        scan_seconds_box = ttk.Spinbox(toolbar, from_=2, to=60, width=6, textvariable=self.scan_seconds)
         scan_seconds_box.grid(
             row=1,
             column=5,
             pady=(8, 0),
+        )
+        Tooltip(
+            scan_seconds_label,
+            "Bluetooth機器を探す目安時間です。\n\n"
+            "Windowsがすぐに結果を返した場合も、この秒数までは再スキャンします。",
         )
         Tooltip(
             scan_seconds_box,
@@ -200,7 +241,7 @@ class BluetoothAssistantApp(tk.Tk):
             "AA:BB:CC:DD:EE:FF 形式で入力します。\n\n"
             "スキャンに出ない機器でも、MACアドレスが分かっていれば対象に追加できます。",
         )
-        self.add_mac_button = ttk.Button(toolbar, text="MAC追加", command=self._add_manual_mac)
+        self.add_mac_button = ttk.Button(toolbar, text="MACを追加", command=self._add_manual_mac)
         self.add_mac_button.grid(row=2, column=3, padx=6, pady=(8, 0))
         Tooltip(
             self.add_mac_button,
@@ -256,6 +297,7 @@ class BluetoothAssistantApp(tk.Tk):
 
         self.detail_var = tk.StringVar(
             value="同じ機器が複数見えても、同じMACアドレスなら1行にまとめます。"
+            "COM候補が高い行から選ぶと成功しやすいです。"
             "選択列をクリックすると、複数台を順番に処理できます。"
         )
         ttk.Label(lower, textvariable=self.detail_var, anchor=tk.W).grid(row=0, column=0, sticky="ew", pady=(8, 4))
@@ -285,7 +327,8 @@ class BluetoothAssistantApp(tk.Tk):
                 self._queue.put(
                     (
                         "log",
-                        f"スキャン完了: {len(devices)}台 / {elapsed:.1f}秒 / API {scan_count}回 / COM {len(ports)}件",
+                        f"スキャン完了: {len(devices)}台 / {elapsed:.1f}秒 / "
+                        f"Windows確認 {scan_count}回 / COM {len(ports)}件",
                     )
                 )
                 self._queue.put(("devices", (devices, ports)))
@@ -320,8 +363,9 @@ class BluetoothAssistantApp(tk.Tk):
         )
         retrier = PairingRetrier(self._backend)
         self._append_log(
-            f"{len(selected_devices)} 台を順番に処理します"
-            "（各試行で 解除 -> ペアリング -> COM待ち）"
+            f"{len(selected_devices)} 台を順番に処理します。"
+            f"1台につき最大 {config.max_attempts} 回まで試します"
+            f"（各回で 解除 -> ペアリング -> COM待ち最大 {config.com_wait_seconds} 秒）"
         )
 
         def on_event(event: RetryEvent) -> None:
@@ -405,7 +449,7 @@ class BluetoothAssistantApp(tk.Tk):
                 elif kind == "retry_event":
                     event = payload
                     assert isinstance(event, RetryEvent)
-                    prefix = f"[{event.attempt}] " if event.attempt else ""
+                    prefix = f"[試行 {event.attempt}] " if event.attempt else ""
                     self._append_log(prefix + event.message)
                     if event.ports:
                         self._ports = event.ports
@@ -542,7 +586,7 @@ class BluetoothAssistantApp(tk.Tk):
 
         while True:
             scan_count += 1
-            self._queue.put(("log", f"スキャン中... {scan_count}回目"))
+            self._queue.put(("log", f"スキャン中... Windows確認 {scan_count}回目"))
             devices = self._backend.list_devices(
                 issue_inquiry=True,
                 timeout_multiplier=timeout_multiplier,
@@ -572,6 +616,7 @@ class BluetoothAssistantApp(tk.Tk):
         if selected is None:
             self.detail_var.set(
                 "同じ機器が複数見えても、同じMACアドレスなら1行にまとめます。"
+                "COM候補が高い行から選ぶと成功しやすいです。"
                 "選択列をクリックすると、複数台を順番に処理できます。"
             )
             return
@@ -612,12 +657,16 @@ class BluetoothAssistantApp(tk.Tk):
         self.log.see(tk.END)
 
     def _set_status(self, message: str) -> None:
-        self.status_var.set(f"状態: {message}")
+        self.status_var.set(format_status_text(message, mock_mode=self._mock_mode))
 
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="BluetoothAssistant Tkinter app.")
-    parser.add_argument("--mock", action="store_true", help="Use an in-memory mock Bluetooth backend.")
+    parser.add_argument(
+        "--mock",
+        action="store_true",
+        help="Use app-only test data. These devices are not Windows Bluetooth devices.",
+    )
     parser.add_argument("--mock-target-address", default="AA:BB:CC:DD:EE:FF", help="Target MAC address for --mock.")
     parser.add_argument("--mock-com-port", default="COM12", help="COM port name returned by --mock after success.")
     parser.add_argument(
@@ -638,5 +687,5 @@ def main(argv: list[str] | None = None) -> None:
         if args.mock
         else None
     )
-    app = BluetoothAssistantApp(backend=backend, auto_scan=not args.no_auto_scan)
+    app = BluetoothAssistantApp(backend=backend, auto_scan=not args.no_auto_scan, mock_mode=args.mock)
     app.mainloop()

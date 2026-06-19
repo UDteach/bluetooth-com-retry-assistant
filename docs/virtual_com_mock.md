@@ -1,15 +1,15 @@
-# 仮想 COM で mock を Windows に近づける
+# 仮想 COM でテストモードを Windows に近づける
 
 ## できること
 
-仮想 COM ドライバで Windows に `COM98` などのポートを表示させ、その COM 名を BluetoothAssistant の mock 成功ポートとして使えます。
+仮想 COM ドライバで Windows に `COM98` などのポートを表示させ、その COM 名を BluetoothAssistant のテストモード成功ポートとして使えます。
 
 これで確認できること:
 
 - アプリの一覧、選択、ログ、状態表示
 - 指定 MAC に対する `解除 -> ペアリング -> COM待ち` の繰り返し
 - COM が出た扱いになった時に、対象機器の処理が成功で止まること
-- exe 版でも同じ mock 指定で起動できること
+- exe 版でも同じテストモード指定で起動できること
 
 できないこと:
 
@@ -27,7 +27,7 @@
 .\scripts\check_virtual_com.ps1 -PortName COM98
 ```
 
-3. アプリを mock + 仮想 COM 名で起動します。
+3. アプリをテストモード + 仮想 COM 名で起動します。
 
 ```powershell
 py -m bluetooth_assistant --mock --mock-target-address AA:BB:CC:DD:EE:FF --mock-com-port COM98
@@ -39,7 +39,7 @@ exe 版では次のように起動します。
 .\dist\BluetoothAssistant.exe --mock --mock-target-address AA:BB:CC:DD:EE:FF --mock-com-port COM98
 ```
 
-4. 一覧に出る `Mock SPP Device` をチェックして、`選択した機器を順番に接続` を押します。
+4. 一覧に出る `テスト用 COM 機器` をチェックして、`接続してCOMを探す` を押します。
 
 デフォルトでは2回目のペアリング後に `COM98` が出た扱いになります。タイミングを変えたい場合:
 
@@ -53,7 +53,7 @@ py -m bluetooth_assistant --mock --mock-com-port COM98 --mock-appear-after 5
 py -m bluetooth_assistant.diagnostics --json --mock-retry --mock-com-port COM98
 ```
 
-この診断は実Bluetoothのペアリングや解除を行いません。mock backend の中で `解除 -> ペアリング -> COM待ち` の順序を検証します。
+この診断は実Bluetoothのペアリングや解除を行いません。テスト用バックエンドの中で `解除 -> ペアリング -> COM待ち` の順序を検証します。
 
 ## なぜ Bluetooth ペアリング一覧までは仮想化しないか
 

@@ -54,6 +54,15 @@ class MockBackendTests(unittest.TestCase):
         self.assertEqual(slow.raw_count, 2)
         self.assertEqual(len({device.address for device in devices}), len(devices))
 
+    def test_default_device_names_do_not_show_mock_label(self):
+        backend = MockBluetoothBackend()
+
+        names = [device.name or "" for device in backend.list_devices()]
+
+        self.assertTrue(names)
+        self.assertFalse(any("mock" in name.lower() for name in names))
+        self.assertTrue(any("テスト用" in name for name in names))
+
 
 if __name__ == "__main__":
     unittest.main()

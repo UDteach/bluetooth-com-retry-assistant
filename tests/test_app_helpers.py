@@ -1,9 +1,11 @@
 import unittest
 
 from bluetooth_assistant.app import (
+    format_status_text,
     manual_device_from_address,
     merge_with_manual_devices,
     timeout_multiplier_from_seconds,
+    window_title_for_mode,
 )
 from bluetooth_assistant.models import BluetoothDevice
 
@@ -19,6 +21,17 @@ class AppHelperTests(unittest.TestCase):
 
     def test_timeout_multiplier_from_seconds_clamps_maximum(self):
         self.assertEqual(timeout_multiplier_from_seconds(999), 48)
+
+    def test_window_title_shows_test_mode_only_for_mock(self):
+        self.assertEqual(window_title_for_mode(False), "BluetoothAssistant")
+        self.assertEqual(window_title_for_mode(True), "BluetoothAssistant - テストモード")
+
+    def test_status_text_shows_test_mode_only_for_mock(self):
+        self.assertEqual(format_status_text("待機中"), "状態: 待機中")
+        self.assertEqual(
+            format_status_text("待機中", mock_mode=True),
+            "状態: テストモード / 待機中",
+        )
 
     def test_manual_device_from_address_normalizes_mac(self):
         device = manual_device_from_address("aabb.ccdd-eeff")
