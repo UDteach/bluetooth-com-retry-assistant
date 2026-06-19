@@ -1,15 +1,24 @@
 from __future__ import annotations
 
 import argparse
+import math
 import queue
 import threading
+import time
 import tkinter as tk
 from tkinter import messagebox, ttk
 
 from .mock_backend import MockBluetoothBackend
-from .models import BluetoothDevice, ComPortInfo, find_matching_ports
+from .models import BluetoothDevice, ComPortInfo, find_matching_ports, merge_duplicate_devices
 from .retry import BluetoothBackend, PairingRetrier, RetryConfig, RetryEvent
 from .windows_bluetooth import BluetoothError, UnsupportedPlatformError, WindowsBluetoothBackend
+
+BLUETOOTH_INQUIRY_UNIT_SECONDS = 1.28
+DEFAULT_SCAN_SECONDS = 10
+
+
+def timeout_multiplier_from_seconds(seconds: int) -> int:
+    return max(1, min(48, math.ceil(max(1, seconds) / BLUETOOTH_INQUIRY_UNIT_SECONDS)))
 
 
 class Tooltip:
@@ -125,12 +134,18 @@ class BluetoothAssistantApp(tk.Tk):
             pady=(8, 0),
         )
 
-        ttk.Label(toolbar, text="探索").grid(row=1, column=4, padx=(12, 4), pady=(8, 0))
-        self.inquiry_multiplier = tk.IntVar(value=8)
-        ttk.Spinbox(toolbar, from_=1, to=48, width=5, textvariable=self.inquiry_multiplier).grid(
+        ttk.Label(toolbar, text="スキャン秒").grid(row=1, column=4, padx=(12, 4), pady=(8, 0))
+        self.scan_seconds = tk.IntVar(value=DEFAULT_SCAN_SECONDS)
+        scan_seconds_box = ttk.Spinbox(toolbar, from_=2, to=60, width=5, textvariable=self.scan_seconds)
+        scan_seconds_box.grid(
             row=1,
             column=5,
             pady=(8, 0),
+        )
+        Tooltip(
+            scan_seconds_box,
+            "Bluetooth機器を探す目安時間です。\n\n"
+            "Windowsがすぐに結果を返した場合も、この秒数までは再スキャンします。",
         )
 
         self.clean_first = tk.BooleanVar(value=False)
@@ -220,16 +235,24 @@ class BluetoothAssistantApp(tk.Tk):
     def _scan_devices(self) -> None:
         if self._is_worker_running():
             return
+        scan_seconds = self._scan_seconds_value()
+        timeout_multiplier = timeout_multiplier_from_seconds(scan_seconds)
         self._set_busy(True)
-        self._append_log("Bluetooth 機器をスキャンします")
+        self._append_log(f"Bluetooth 機器をスキャンします（目安 {scan_seconds} 秒）")
 
         def work() -> None:
             try:
-                devices = self._backend.list_devices(
-                    issue_inquiry=True,
-                    timeout_multiplier=max(1, int(self.inquiry_multiplier.get())),
+                devices, elapsed, scan_count = self._scan_with_minimum_duration(
+                    scan_seconds=scan_seconds,
+                    timeout_multiplier=timeout_multiplier,
                 )
                 ports = self._backend.list_com_ports()
+                self._queue.put(
+                    (
+                        "log",
+                        f"スキャン完了: {len(devices)}台 / {elapsed:.1f}秒 / API {scan_count}回 / COM {len(ports)}件",
+                    )
+                )
                 self._queue.put(("devices", (devices, ports)))
             except Exception as exc:
                 self._queue.put(("error", exc))
@@ -254,7 +277,7 @@ class BluetoothAssistantApp(tk.Tk):
         self._refresh_tree_rows()
         config = RetryConfig(
             max_attempts=max(1, int(self.max_attempts.get())),
-            inquiry_timeout_multiplier=max(1, min(int(self.inquiry_multiplier.get()), 48)),
+            inquiry_timeout_multiplier=timeout_multiplier_from_seconds(self._scan_seconds_value()),
             com_wait_seconds=max(3, int(self.wait_seconds.get())),
             clean_before_first_attempt=bool(self.clean_first.get()),
             enable_serial_service=bool(self.enable_spp.get()),
@@ -428,6 +451,37 @@ class BluetoothAssistantApp(tk.Tk):
         self._checked_addresses.clear()
         self._refresh_tree_rows()
         self._update_selection_detail()
+
+    def _scan_seconds_value(self) -> int:
+        try:
+            return max(2, min(60, int(self.scan_seconds.get())))
+        except (tk.TclError, ValueError):
+            return DEFAULT_SCAN_SECONDS
+
+    def _scan_with_minimum_duration(
+        self,
+        *,
+        scan_seconds: int,
+        timeout_multiplier: int,
+    ) -> tuple[list[BluetoothDevice], float, int]:
+        started = time.perf_counter()
+        deadline = started + scan_seconds
+        scan_count = 0
+        found: dict[str, BluetoothDevice] = {}
+
+        while True:
+            scan_count += 1
+            self._queue.put(("log", f"スキャン中... {scan_count}回目"))
+            devices = self._backend.list_devices(
+                issue_inquiry=True,
+                timeout_multiplier=timeout_multiplier,
+            )
+            for device in devices:
+                found[device.address] = device
+            elapsed = time.perf_counter() - started
+            if elapsed >= scan_seconds:
+                return merge_duplicate_devices(found.values()), elapsed, scan_count
+            time.sleep(min(1.0, max(0.1, deadline - time.perf_counter())))
 
     def _selected_device(self) -> BluetoothDevice | None:
         selection = self.tree.selection()
