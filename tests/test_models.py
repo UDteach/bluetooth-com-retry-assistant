@@ -33,6 +33,18 @@ class ModelTests(unittest.TestCase):
         text = r"BTHENUM\{00001101-0000-1000-8000-00805F9B34FB}\7&1D80ECD3&0&AABBCCDDEEFF_C00000003"
         self.assertTrue(address_in_text("AA:BB:CC:DD:EE:FF", text))
 
+    def test_address_matching_handles_reversed_byte_order(self):
+        text = r"BTHENUM\{00001101-0000-1000-8000-00805F9B34FB}\7&1D80ECD3&0&FFEEDDCCBBAA_C00000003"
+        self.assertTrue(address_in_text("AA:BB:CC:DD:EE:FF", text))
+
+    def test_address_matching_rejects_other_mac(self):
+        text = r"BTHENUM\{00001101-0000-1000-8000-00805F9B34FB}\7&1D80ECD3&0&112233445566_C00000003"
+        self.assertFalse(address_in_text("AA:BB:CC:DD:EE:FF", text))
+
+    def test_invalid_address_raises(self):
+        with self.assertRaises(ValueError):
+            normalize_address("AA:BB")
+
     def test_find_matching_ports_filters_by_mac(self):
         ports = [
             ComPortInfo("COM4", description="Standard Serial over Bluetooth link", hwid="BTHENUM\\AABBCCDDEEFF"),

@@ -11,6 +11,12 @@ pip install -r requirements.txt
 py -m bluetooth_assistant
 ```
 
+実機なしで画面の流れを確認する場合:
+
+```powershell
+py -m bluetooth_assistant --mock
+```
+
 ## 方針
 
 - Bluetooth 一覧で同じ MAC アドレスが複数見える場合は、UI 上で 1 台に統合します。
@@ -27,8 +33,35 @@ py -m bluetooth_assistant
 ## テスト
 
 ```powershell
+pip install -r requirements-dev.txt
+py -m ruff check .
 py -m unittest discover -s tests
 py -m compileall bluetooth_assistant tests
+py -m bluetooth_assistant.diagnostics --json --mock-retry
+```
+
+実機に変更を加えない読み取り診断:
+
+```powershell
+py -m bluetooth_assistant.diagnostics --json --scan-bluetooth
+```
+
+`--scan-bluetooth` は一覧取得だけを行い、ペアリングや解除は実行しません。
+
+## exe ビルド
+
+```powershell
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements-dev.txt
+.\scripts\build_exe.ps1
+.\dist\BluetoothAssistant.exe --help
+```
+
+ビルド成果物は `dist\BluetoothAssistant.exe` です。実機なしの画面確認は次でできます。
+
+```powershell
+.\dist\BluetoothAssistant.exe --mock
 ```
 
 ## 参照した一次情報

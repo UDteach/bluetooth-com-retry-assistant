@@ -1,0 +1,4 @@
+-r requirements.txt
+pyinstaller>=6.0
+pycodestyle>=2.12
+ruff>=0.8

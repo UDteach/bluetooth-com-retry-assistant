@@ -1,17 +1,19 @@
 from __future__ import annotations
 
+import argparse
 import queue
 import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
 
+from .mock_backend import MockBluetoothBackend
 from .models import BluetoothDevice, ComPortInfo, find_matching_ports
-from .retry import PairingRetrier, RetryConfig, RetryEvent
+from .retry import BluetoothBackend, PairingRetrier, RetryConfig, RetryEvent
 from .windows_bluetooth import BluetoothError, UnsupportedPlatformError, WindowsBluetoothBackend
 
 
 class BluetoothAssistantApp(tk.Tk):
-    def __init__(self) -> None:
+    def __init__(self, backend: BluetoothBackend | None = None, *, auto_scan: bool = True) -> None:
         super().__init__()
         self.title("BluetoothAssistant")
         self.geometry("1040x680")
@@ -24,18 +26,22 @@ class BluetoothAssistantApp(tk.Tk):
         self._devices: dict[str, BluetoothDevice] = {}
         self._ports: list[ComPortInfo] = []
 
-        try:
-            self._backend = WindowsBluetoothBackend()
-        except UnsupportedPlatformError as exc:
-            messagebox.showerror("未対応", str(exc))
-            raise
-        except BluetoothError as exc:
-            messagebox.showerror("Bluetooth 初期化エラー", str(exc))
-            raise
+        if backend is None:
+            try:
+                self._backend = WindowsBluetoothBackend()
+            except UnsupportedPlatformError as exc:
+                messagebox.showerror("未対応", str(exc))
+                raise
+            except BluetoothError as exc:
+                messagebox.showerror("Bluetooth 初期化エラー", str(exc))
+                raise
+        else:
+            self._backend = backend
 
         self._build_ui()
         self.after(100, self._pump_queue)
-        self._scan_devices()
+        if auto_scan:
+            self._scan_devices()
 
     def _build_ui(self) -> None:
         self.columnconfigure(0, weight=1)
@@ -223,9 +229,7 @@ class BluetoothAssistantApp(tk.Tk):
                     self._append_log(prefix + event.message)
                     if event.ports:
                         self._ports = event.ports
-                elif kind == "retry_done":
-                    self._append_log(str(payload))
-                elif kind == "log":
+                elif kind == "retry_done" or kind == "log":
                     self._append_log(str(payload))
                 elif kind == "error":
                     self._append_log(f"エラー: {payload}")
@@ -298,6 +302,12 @@ class BluetoothAssistantApp(tk.Tk):
         self.log.see(tk.END)
 
 
-def main() -> None:
-    app = BluetoothAssistantApp()
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="BluetoothAssistant Tkinter app.")
+    parser.add_argument("--mock", action="store_true", help="Use an in-memory mock Bluetooth backend.")
+    parser.add_argument("--no-auto-scan", action="store_true", help="Start the app without the initial scan.")
+    args = parser.parse_args(argv)
+
+    backend = MockBluetoothBackend() if args.mock else None
+    app = BluetoothAssistantApp(backend=backend, auto_scan=not args.no_auto_scan)
     app.mainloop()

@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import ctypes
-from ctypes import wintypes
 import os
-from typing import Iterable
+from ctypes import wintypes
 
 from .com_ports import list_com_ports
 from .models import BluetoothDevice, OperationResult, merge_duplicate_devices, normalize_address
-
 
 BLUETOOTH_MAX_NAME_SIZE = 248
 ERROR_SUCCESS = 0
@@ -213,7 +211,11 @@ class _BluetoothApi:
 
         if last_code == ERROR_SERVICE_DOES_NOT_EXIST:
             return OperationResult(False, "対象機器は Serial Port Profile を返していません", last_code)
-        return OperationResult(False, f"Serial Port サービス有効化に失敗しました: {_format_error(last_code or 0)}", last_code)
+        return OperationResult(
+            False,
+            f"Serial Port サービス有効化に失敗しました: {_format_error(last_code or 0)}",
+            last_code,
+        )
 
     def _open_radio_handles(self) -> list[wintypes.HANDLE]:
         params = BLUETOOTH_FIND_RADIO_PARAMS()
@@ -315,7 +317,7 @@ def _model_from_info(info: BLUETOOTH_DEVICE_INFO) -> BluetoothDevice:
 
 
 def _system_time_text(value: SYSTEMTIME) -> str:
-    if not value.wYear:
+    if not value.wYear or value.wYear <= 1601:
         return ""
     return (
         f"{value.wYear:04d}-{value.wMonth:02d}-{value.wDay:02d} "

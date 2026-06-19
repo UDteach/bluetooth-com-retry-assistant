@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import threading
 import time
-from typing import Callable, Protocol
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from typing import Protocol
 
 from .models import BluetoothDevice, ComPortInfo, OperationResult, find_matching_ports, normalize_address
 
@@ -80,6 +81,7 @@ class PairingRetrier:
             return RetryOutcome(True, False, 0, initial_ports, message)
 
         attempts = max(1, int(config.max_attempts))
+        cleaned_since_last_pair = False
         for attempt in range(1, attempts + 1):
             if stop_event.is_set():
                 return RetryOutcome(False, True, attempt - 1, message="停止しました")
@@ -93,20 +95,26 @@ class PairingRetrier:
             except Exception as exc:  # pragma: no cover - UI/logging boundary
                 emit(RetryEvent("warning", f"一覧更新に失敗しました: {exc}", attempt))
 
-            should_clean = config.clean_before_first_attempt or attempt > 1
+            should_clean = (attempt == 1 and config.clean_before_first_attempt) or (
+                attempt > 1 and config.unpair_between_attempts and not cleaned_since_last_pair
+            )
             if should_clean:
                 emit(RetryEvent("unpair", "既存のペアリングを解除しています", attempt))
                 unpair_result = self.backend.unpair(target_address)
                 emit(RetryEvent("unpair", unpair_result.message or "解除を実行しました", attempt))
+                cleaned_since_last_pair = True
                 if config.settle_seconds > 0:
                     self._sleep(config.settle_seconds)
 
             emit(RetryEvent("pair", "ペアリングを開始します", attempt))
             pair_result = self.backend.pair(target_address)
+            cleaned_since_last_pair = False
             emit(RetryEvent("pair", pair_result.message or "ペアリング処理が戻りました", attempt))
             if not pair_result.ok:
                 if attempt < attempts and config.unpair_between_attempts:
-                    self._cleanup_after_failed_attempt(target_address, attempt, emit, config)
+                    cleaned_since_last_pair = self._cleanup_after_failed_attempt(
+                        target_address, attempt, emit, config
+                    )
                 continue
 
             if config.enable_serial_service:
@@ -125,7 +133,7 @@ class PairingRetrier:
 
             emit(RetryEvent("retry", "COM ポート未検出のため次の試行へ進みます", attempt))
             if attempt < attempts and config.unpair_between_attempts:
-                self._cleanup_after_failed_attempt(target_address, attempt, emit, config)
+                cleaned_since_last_pair = self._cleanup_after_failed_attempt(target_address, attempt, emit, config)
 
         message = "最大試行回数まで実行しましたが、対象 MAC の COM ポートは見つかりませんでした"
         emit(RetryEvent("failed", message, attempts))
@@ -155,12 +163,13 @@ class PairingRetrier:
         attempt: int,
         emit: EventCallback,
         config: RetryConfig,
-    ) -> None:
+    ) -> bool:
         emit(RetryEvent("unpair", "次の試行のため解除します", attempt))
         result = self.backend.unpair(address)
         emit(RetryEvent("unpair", result.message or "解除を実行しました", attempt))
         if config.settle_seconds > 0:
             self._sleep(config.settle_seconds)
+        return True
 
 
 def _format_ports(ports: list[ComPortInfo]) -> str:

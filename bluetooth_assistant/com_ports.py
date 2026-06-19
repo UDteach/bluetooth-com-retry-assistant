@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-from typing import Iterable
+from collections.abc import Iterable
 
 from .models import ComPortInfo
 

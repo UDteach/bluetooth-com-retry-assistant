@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
 import re
-from typing import Iterable
-
+from collections.abc import Iterable
+from dataclasses import dataclass, field, replace
 
 _HEX_RE = re.compile(r"[^0-9A-Fa-f]")
 
