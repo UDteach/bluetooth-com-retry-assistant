@@ -17,6 +17,11 @@ if (-not (Test-Path $Python)) {
     $Python = (Resolve-Path $Python).Path
 }
 
+$exe = Join-Path $root "dist\$Name.exe"
+if (Test-Path $exe) {
+    Remove-Item -LiteralPath $exe -Force
+}
+
 & $Python -m PyInstaller `
     --noconfirm `
     --clean `
@@ -26,7 +31,6 @@ if (-not (Test-Path $Python)) {
     --collect-submodules serial `
     bluetooth_assistant_launcher.py
 
-$exe = Join-Path $root "dist\$Name.exe"
 if (-not (Test-Path $exe)) {
     throw "Build finished without expected exe: $exe"
 }

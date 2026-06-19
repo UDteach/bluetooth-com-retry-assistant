@@ -128,7 +128,7 @@ def main(argv: list[str] | None = None) -> int:
         results.extend(run_mock_retry())
 
     if args.json:
-        print(json.dumps([asdict(result) for result in results], ensure_ascii=False, indent=2))
+        print(json.dumps([asdict(result) for result in results], ensure_ascii=True, indent=2))
     else:
         for result in results:
             status = "OK" if result.ok else "FAIL"
