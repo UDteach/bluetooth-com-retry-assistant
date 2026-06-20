@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BluetoothAssistant</title>
+    <meta
+      name="description"
+      content="Windows Bluetooth機器を一覧表示し、ペアリング解除と接続を繰り返しながらSPP/RFCOMMのCOMポートが出るまで確認するデスクトップアプリ。"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main>
+      <nav aria-label="Primary">
+        <a class="brand" href="./" aria-label="BluetoothAssistant home">
+          <span class="mark">BA</span>
+          <span>BluetoothAssistant</span>
+        </a>
+        <div class="navlinks">
+          <a href="https://github.com/UDteach/bluetooth-com-retry-assistant/releases/latest">Release</a>
+          <a href="https://github.com/UDteach/bluetooth-com-retry-assistant">GitHub</a>
+          <a href="#features">Features</a>
+        </div>
+      </nav>
+
+      <header>
+        <section class="hero-copy" aria-labelledby="page-title">
+          <h1 id="page-title">BluetoothAssistant</h1>
+          <p class="lead">
+            Windows Bluetooth機器を見つけた順に一覧へ出し、選んだ機器をCOMが出るまで接続確認します。
+            非エンジニアでも状態とログを追える、Python + Tkinter製のCOM接続支援ツールです。
+          </p>
+          <div class="actions">
+            <a
+              class="button primary"
+              href="https://github.com/UDteach/bluetooth-com-retry-assistant/releases/latest/download/BluetoothAssistant.exe"
+            >
+              Download for Windows
+            </a>
+            <a class="button secondary" href="https://github.com/UDteach/bluetooth-com-retry-assistant/releases/latest">
+              Latest Release
+            </a>
+          </div>
+          <p class="note">
+            対象はWindows側のCOMポート作成までです。BLE GATT / DFU / OTAの転送処理は実行しません。
+          </p>
+        </section>
+
+        <section class="hero-visual" aria-label="BluetoothAssistant preview">
+          <img src="./assets/product-preview.svg" alt="BluetoothAssistantの画面プレビュー" />
+        </section>
+      </header>
+
+      <section id="features" class="features" aria-labelledby="features-title">
+        <h2 id="features-title">COMが出るまでの確認に集中</h2>
+        <div class="feature-grid">
+          <article>
+            <h3>Progressive Scan</h3>
+            <p>スキャン完了を待たず、発見したBluetooth候補から順に一覧へ表示します。</p>
+          </article>
+          <article>
+            <h3>Retry Until COM</h3>
+            <p>チェックした機器を順番に処理し、COMが出ない機器でも最大試行回数で止まります。</p>
+          </article>
+          <article>
+            <h3>Manual Connect</h3>
+            <p>一覧で選んだ1台だけを、ボタンまたは右クリックから1回だけ接続確認できます。</p>
+          </article>
+          <article>
+            <h3>Current COM List</h3>
+            <p>USB書き込み用COMとBluetooth経由COMを同じ画面で確認できます。</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="workflow" aria-labelledby="workflow-title">
+        <h2 id="workflow-title">使い方</h2>
+        <ol>
+          <li>Bluetooth機器をスキャンして、候補とCOM見込み点数を確認します。</li>
+          <li>複数台ならチェックして、「接続してCOMを探す」を実行します。</li>
+          <li>1台だけ試す場合は、「選択を1回接続」または右クリックから接続します。</li>
+          <li>COMが出たら、現在のCOM一覧と対象行のCOM列で確認します。</li>
+        </ol>
+      </section>
+
+      <footer>
+        <span>BluetoothAssistant</span>
+        <a href="https://github.com/UDteach/bluetooth-com-retry-assistant">Source on GitHub</a>
+      </footer>
+    </main>
+  </body>
+</html>

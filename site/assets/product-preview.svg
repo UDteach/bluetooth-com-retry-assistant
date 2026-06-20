@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="680" viewBox="0 0 980 680" role="img" aria-labelledby="title desc">
+  <title id="title">BluetoothAssistant app preview</title>
+  <desc id="desc">Bluetooth devices, COM candidates, logs, and current COM ports in a desktop app window.</desc>
+  <rect width="980" height="680" rx="22" fill="#f7faf8" />
+  <rect x="44" y="46" width="892" height="588" rx="16" fill="#ffffff" stroke="#cfded6" stroke-width="2" />
+  <rect x="44" y="46" width="892" height="54" rx="16" fill="#eef8f3" />
+  <rect x="44" y="84" width="892" height="16" fill="#eef8f3" />
+  <circle cx="74" cy="73" r="7" fill="#ef6a5b" />
+  <circle cx="96" cy="73" r="7" fill="#e7b84b" />
+  <circle cx="118" cy="73" r="7" fill="#39b978" />
+  <text x="148" y="79" fill="#16201c" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="700">BluetoothAssistant</text>
+
+  <rect x="68" y="124" width="150" height="38" rx="7" fill="#2563eb" />
+  <text x="98" y="149" fill="#ffffff" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="700">スキャン</text>
+  <rect x="230" y="124" width="178" height="38" rx="7" fill="#ffffff" stroke="#cfded6" />
+  <text x="250" y="149" fill="#16201c" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="700">接続してCOMを探す</text>
+  <rect x="422" y="124" width="152" height="38" rx="7" fill="#ffffff" stroke="#cfded6" />
+  <text x="444" y="149" fill="#16201c" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="700">選択を1回接続</text>
+  <text x="604" y="148" fill="#5d6b64" font-family="Segoe UI, Arial, sans-serif" font-size="13">状態: スキャン中 3台発見 / Windows確認2回目</text>
+
+  <rect x="68" y="190" width="844" height="230" rx="10" fill="#ffffff" stroke="#d9e3dd" />
+  <rect x="68" y="190" width="844" height="38" rx="10" fill="#f0f7f4" />
+  <rect x="68" y="218" width="844" height="10" fill="#f0f7f4" />
+  <text x="86" y="215" fill="#5d6b64" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="700">選択</text>
+  <text x="154" y="215" fill="#5d6b64" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="700">名前</text>
+  <text x="358" y="215" fill="#5d6b64" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="700">MAC</text>
+  <text x="520" y="215" fill="#5d6b64" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="700">COM候補</text>
+  <text x="650" y="215" fill="#5d6b64" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="700">状態</text>
+  <text x="800" y="215" fill="#5d6b64" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="700">COM</text>
+
+  <g font-family="Segoe UI, Arial, sans-serif" font-size="14">
+    <rect x="68" y="228" width="844" height="48" fill="#ffffff" />
+    <text x="90" y="258" fill="#16835f" font-weight="700">✓</text>
+    <text x="154" y="258" fill="#16201c" font-weight="700">BT-COM-METER-A</text>
+    <text x="358" y="258" fill="#4f5d56">B4:BF:E9:D4:51:FA</text>
+    <text x="520" y="258" fill="#16835f" font-weight="700">高い</text>
+    <text x="650" y="258" fill="#4f5d56">成功 / remembered</text>
+    <text x="800" y="258" fill="#2563eb" font-weight="700">COM6</text>
+
+    <line x1="68" y1="276" x2="912" y2="276" stroke="#e5eee9" />
+    <rect x="68" y="277" width="844" height="48" fill="#fbfdfc" />
+    <text x="90" y="307" fill="#16835f" font-weight="700">✓</text>
+    <text x="154" y="307" fill="#16201c" font-weight="700">BT-COM-METER-B</text>
+    <text x="358" y="307" fill="#4f5d56">70:4B:CA:7C:B1:76</text>
+    <text x="520" y="307" fill="#16835f" font-weight="700">高い</text>
+    <text x="650" y="307" fill="#4f5d56">処理中</text>
+    <text x="800" y="307" fill="#2563eb" font-weight="700">COM7</text>
+
+    <line x1="68" y1="325" x2="912" y2="325" stroke="#e5eee9" />
+    <rect x="68" y="326" width="844" height="48" fill="#ffffff" />
+    <text x="90" y="356" fill="#8da099">✓</text>
+    <text x="154" y="356" fill="#16201c" font-weight="700">BT-NO-COM-TEST</text>
+    <text x="358" y="356" fill="#4f5d56">30:76:F5:B0:31:4E</text>
+    <text x="520" y="356" fill="#a4482b" font-weight="700">低い</text>
+    <text x="650" y="356" fill="#4f5d56">未登録</text>
+    <text x="800" y="356" fill="#9aa7a1">-</text>
+  </g>
+
+  <rect x="68" y="450" width="520" height="126" rx="10" fill="#101915" />
+  <text x="90" y="482" fill="#dff4ea" font-family="Consolas, monospace" font-size="14">[1/3] BT-COM-METER-A を処理しています</text>
+  <text x="90" y="510" fill="#dff4ea" font-family="Consolas, monospace" font-size="14">解除 -&gt; ペアリング -&gt; COM待ち</text>
+  <text x="90" y="538" fill="#8ee0bf" font-family="Consolas, monospace" font-size="14">COMポートを検出しました: COM6</text>
+
+  <rect x="616" y="450" width="296" height="126" rx="10" fill="#ffffff" stroke="#d9e3dd" />
+  <text x="636" y="480" fill="#16201c" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="800">現在のCOM一覧</text>
+  <text x="636" y="510" fill="#2563eb" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="700">COM3</text>
+  <text x="706" y="510" fill="#5d6b64" font-family="Segoe UI, Arial, sans-serif" font-size="13">USB-SERIAL CH340</text>
+  <text x="636" y="538" fill="#2563eb" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="700">COM7</text>
+  <text x="706" y="538" fill="#5d6b64" font-family="Segoe UI, Arial, sans-serif" font-size="13">Bluetoothシリアル</text>
+</svg>
