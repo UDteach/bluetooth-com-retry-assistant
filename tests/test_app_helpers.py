@@ -1,14 +1,17 @@
 import unittest
+from datetime import datetime
 from types import MethodType, SimpleNamespace
 
 from bluetooth_assistant.app import (
     BluetoothAssistantApp,
     build_com_port_display_rows,
     build_device_display_rows,
+    devices_observed_now,
     devices_with_manual_devices,
     format_com_port_summary,
     format_status_text,
     manual_device_from_address,
+    observed_time_text,
     retry_config_from_values,
     scan_progress_signature,
     timeout_multiplier_from_seconds,
@@ -152,6 +155,25 @@ class AppHelperTests(unittest.TestCase):
                 ("AA:BB:CC:DD:EE:FF", "BT-COM", 0, 2),
             ),
         )
+
+    def test_observed_time_text_uses_local_display_format(self):
+        value = observed_time_text(datetime(2026, 6, 20, 23, 4, 5))
+
+        self.assertEqual(value, "2026-06-20 23:04:05")
+
+    def test_devices_observed_now_replaces_windows_last_seen_for_display(self):
+        devices = [
+            BluetoothDevice(
+                "AA:BB:CC:DD:EE:FF",
+                name="Meter",
+                last_seen="2000-01-01 00:00:00",
+            )
+        ]
+
+        stamped = devices_observed_now(devices, observed_at=datetime(2026, 6, 20, 23, 4, 5))
+
+        self.assertEqual(stamped[0].last_seen, "2026-06-20 23:04:05")
+        self.assertEqual(devices[0].last_seen, "2000-01-01 00:00:00")
 
     def test_clear_scan_results_for_new_scan_removes_previous_rows(self):
         class FakeTree:

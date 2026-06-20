@@ -8,7 +8,8 @@ import time
 import tkinter as tk
 from collections import Counter, defaultdict
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from datetime import datetime
 from tkinter import messagebox, ttk
 
 from . import __version__
@@ -21,6 +22,7 @@ from .windows_bluetooth import BluetoothError, UnsupportedPlatformError, Windows
 
 BLUETOOTH_INQUIRY_UNIT_SECONDS = 1.28
 DEFAULT_SCAN_SECONDS = 10
+DEVICE_OBSERVED_TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
 def timeout_multiplier_from_seconds(seconds: int) -> int:
@@ -157,6 +159,19 @@ def scan_progress_signature(devices: list[BluetoothDevice]) -> tuple[tuple[str, 
             for (address, name, class_of_device), count in counts.items()
         )
     )
+
+
+def observed_time_text(now: datetime | None = None) -> str:
+    return (now or datetime.now()).strftime(DEVICE_OBSERVED_TIME_FORMAT)
+
+
+def devices_observed_now(
+    devices: list[BluetoothDevice],
+    *,
+    observed_at: datetime | None = None,
+) -> list[BluetoothDevice]:
+    text = observed_time_text(observed_at)
+    return [replace(device, last_seen=text) for device in devices]
 
 
 def _dedupe_devices_by_address(devices: list[BluetoothDevice]) -> list[BluetoothDevice]:
@@ -418,7 +433,7 @@ class BluetoothAssistantApp(tk.Tk):
             "status": "状態",
             "com": "COM",
             "class": "Class",
-            "last_seen": "Last Seen",
+            "last_seen": "検出時刻",
         }
         widths = {
             "checked": 64,
@@ -664,7 +679,7 @@ class BluetoothAssistantApp(tk.Tk):
                     )
                     if outcome.success and success_unchecks:
                         self._queue.put(("checked_address", (device.address, False)))
-                devices = self._backend.list_devices(issue_inquiry=False)
+                devices = devices_observed_now(self._backend.list_devices(issue_inquiry=False))
                 ports = self._backend.list_com_ports()
                 self._queue.put(("devices", (devices, ports)))
             except Exception as exc:
@@ -692,7 +707,7 @@ class BluetoothAssistantApp(tk.Tk):
             try:
                 result = self._backend.unpair(selected.address)
                 self._queue.put(("log", result.message))
-                devices = self._backend.list_devices(issue_inquiry=False)
+                devices = devices_observed_now(self._backend.list_devices(issue_inquiry=False))
                 ports = self._backend.list_com_ports()
                 self._queue.put(("devices", (devices, ports)))
             except Exception as exc:
@@ -974,9 +989,11 @@ class BluetoothAssistantApp(tk.Tk):
         while True:
             scan_count += 1
             self._queue.put(("log", f"スキャン中... Windows確認 {scan_count}回目"))
-            devices = self._backend.list_devices(
-                issue_inquiry=True,
-                timeout_multiplier=timeout_multiplier,
+            devices = devices_observed_now(
+                self._backend.list_devices(
+                    issue_inquiry=True,
+                    timeout_multiplier=timeout_multiplier,
+                )
             )
             occurrence_by_signature: defaultdict[tuple[str, str, int], int] = defaultdict(int)
             for device in devices:
