@@ -5,6 +5,7 @@ from bluetooth_assistant.app import (
     devices_with_manual_devices,
     format_status_text,
     manual_device_from_address,
+    retry_config_from_values,
     timeout_multiplier_from_seconds,
     window_title_for_mode,
 )
@@ -33,6 +34,30 @@ class AppHelperTests(unittest.TestCase):
             format_status_text("待機中", mock_mode=True),
             "状態: テストモード / 待機中",
         )
+
+    def test_retry_config_from_values_uses_bounded_ui_values(self):
+        config = retry_config_from_values(4, 1, 2, True)
+
+        self.assertEqual(config.max_attempts, 4)
+        self.assertEqual(config.inquiry_timeout_multiplier, 2)
+        self.assertEqual(config.com_wait_seconds, 3)
+        self.assertTrue(config.unpair_before_each_attempt)
+        self.assertTrue(config.enable_serial_service)
+
+    def test_retry_config_from_values_single_attempt_for_manual_connect(self):
+        config = retry_config_from_values(20, 10, 45, False, single_attempt=True)
+
+        self.assertEqual(config.max_attempts, 1)
+        self.assertEqual(config.inquiry_timeout_multiplier, 8)
+        self.assertEqual(config.com_wait_seconds, 45)
+        self.assertFalse(config.enable_serial_service)
+
+    def test_retry_config_from_values_falls_back_for_invalid_values(self):
+        config = retry_config_from_values("invalid", "invalid", "invalid", True)
+
+        self.assertEqual(config.max_attempts, 5)
+        self.assertEqual(config.inquiry_timeout_multiplier, 8)
+        self.assertEqual(config.com_wait_seconds, 20)
 
     def test_manual_device_from_address_normalizes_mac(self):
         device = manual_device_from_address("aabb.ccdd-eeff")

@@ -37,6 +37,46 @@ def format_status_text(message: str, *, mock_mode: bool = False) -> str:
     return f"状態: {prefix}{message}"
 
 
+def _setting_value(value: object) -> object:
+    getter = getattr(value, "get", None)
+    if callable(getter):
+        return getter()
+    return value
+
+
+def _int_setting(value: object, *, default: int) -> int:
+    try:
+        return int(_setting_value(value))
+    except (tk.TclError, TypeError, ValueError):
+        return default
+
+
+def _bool_setting(value: object, *, default: bool) -> bool:
+    try:
+        return bool(_setting_value(value))
+    except (tk.TclError, TypeError, ValueError):
+        return default
+
+
+def retry_config_from_values(
+    max_attempts: object,
+    scan_seconds: object,
+    wait_seconds: object,
+    enable_serial_service: object,
+    *,
+    single_attempt: bool = False,
+) -> RetryConfig:
+    return RetryConfig(
+        max_attempts=1 if single_attempt else max(1, _int_setting(max_attempts, default=5)),
+        inquiry_timeout_multiplier=timeout_multiplier_from_seconds(
+            max(2, min(60, _int_setting(scan_seconds, default=DEFAULT_SCAN_SECONDS)))
+        ),
+        com_wait_seconds=max(3, _int_setting(wait_seconds, default=20)),
+        unpair_before_each_attempt=True,
+        enable_serial_service=_bool_setting(enable_serial_service, default=True),
+    )
+
+
 def manual_device_from_address(address: str) -> BluetoothDevice:
     return BluetoothDevice(normalize_address(address), name="手入力", remembered=True, last_seen="手入力")
 
@@ -197,16 +237,26 @@ class BluetoothAssistantApp(tk.Tk):
             "右下に「デバイスの追加」が出る場合は、Windows側の許可確認です。",
         )
 
+        self.connect_once_button = ttk.Button(toolbar, text="選択を1回接続", command=self._connect_selected_once)
+        self.connect_once_button.grid(row=0, column=2, padx=6)
+        Tooltip(
+            self.connect_once_button,
+            "一覧で選んでいる1台だけを処理します。\n\n"
+            "解除 -> ペアリング -> COM待ちを1回だけ行い、COMが出たら止まります。"
+            "出ない場合は「1回のCOM待ち秒」で終了します。\n\n"
+            "同じMACが複数行ある場合は、いま選択している行を対象にします。",
+        )
+
         self.check_all_button = ttk.Button(toolbar, text="全選択", command=self._check_all_visible)
-        self.check_all_button.grid(row=0, column=2, padx=6)
+        self.check_all_button.grid(row=0, column=3, padx=6)
         Tooltip(self.check_all_button, "現在表示されている機器をすべてチェックします。")
 
         self.clear_checks_button = ttk.Button(toolbar, text="選択クリア", command=self._clear_checks)
-        self.clear_checks_button.grid(row=0, column=3, padx=6)
+        self.clear_checks_button.grid(row=0, column=4, padx=6)
         Tooltip(self.clear_checks_button, "チェックをすべて外します。")
 
         self.unpair_button = ttk.Button(toolbar, text="選択機器の登録を解除", command=self._unpair_selected)
-        self.unpair_button.grid(row=0, column=4, padx=6)
+        self.unpair_button.grid(row=0, column=5, padx=6)
         Tooltip(
             self.unpair_button,
             "選択している機器のWindowsペアリング情報を消します。\n\n"
@@ -214,11 +264,11 @@ class BluetoothAssistantApp(tk.Tk):
         )
 
         self.stop_button = ttk.Button(toolbar, text="停止", command=self._stop_retry, state=tk.DISABLED)
-        self.stop_button.grid(row=0, column=5, padx=6)
+        self.stop_button.grid(row=0, column=6, padx=6)
 
         ttk.Label(toolbar, textvariable=self.status_var, anchor=tk.W).grid(
             row=0,
-            column=6,
+            column=7,
             columnspan=8,
             sticky="ew",
             padx=(12, 0),
@@ -354,6 +404,12 @@ class BluetoothAssistantApp(tk.Tk):
         self.tree.grid(row=0, column=0, sticky="nsew")
         self.tree.bind("<<TreeviewSelect>>", lambda _event: self._update_selection_detail())
         self.tree.bind("<Button-1>", self._handle_tree_click, add="+")
+        self.tree.bind("<Button-3>", self._show_tree_context_menu, add="+")
+        self.tree_menu = tk.Menu(self, tearoff=False)
+        self.tree_menu.add_command(label="この機器に接続", command=self._connect_selected_once)
+        self.tree_menu.add_command(label="チェックを切替", command=self._toggle_selected_checked)
+        self.tree_menu.add_separator()
+        self.tree_menu.add_command(label="登録を解除", command=self._unpair_selected)
 
         scrollbar = ttk.Scrollbar(device_frame, orient=tk.VERTICAL, command=self.tree.yview)
         scrollbar.grid(row=0, column=1, sticky="ns")
@@ -419,22 +475,58 @@ class BluetoothAssistantApp(tk.Tk):
             messagebox.showinfo("選択してください", "対象の Bluetooth 機器を選択してください。")
             return
 
+        config = retry_config_from_values(
+            self.max_attempts,
+            self.scan_seconds,
+            self.wait_seconds,
+            self.enable_spp,
+        )
+        self._start_connection_run(
+            selected_devices,
+            config,
+            run_label="COM探索",
+            success_unchecks=True,
+        )
+
+    def _connect_selected_once(self) -> None:
+        if self._is_worker_running():
+            return
+        selected = self._selected_device()
+        if selected is None:
+            messagebox.showinfo("選択してください", "接続する Bluetooth 機器を一覧から1つ選択してください。")
+            return
+
+        config = retry_config_from_values(
+            self.max_attempts,
+            self.scan_seconds,
+            self.wait_seconds,
+            self.enable_spp,
+            single_attempt=True,
+        )
+        self._start_connection_run(
+            [selected],
+            config,
+            run_label="手動接続",
+            success_unchecks=False,
+        )
+
+    def _start_connection_run(
+        self,
+        selected_devices: list[BluetoothDevice],
+        config: RetryConfig,
+        *,
+        run_label: str,
+        success_unchecks: bool,
+    ) -> None:
         self._stop_event.clear()
         for device in selected_devices:
             self._run_status_by_address[device.address] = "待機中"
         self._set_busy(True, retrying=True)
-        self._set_status(f"COM探索中: {len(selected_devices)}台")
+        self._set_status(f"{run_label}中: {len(selected_devices)}台")
         self._refresh_tree_rows()
-        config = RetryConfig(
-            max_attempts=max(1, int(self.max_attempts.get())),
-            inquiry_timeout_multiplier=timeout_multiplier_from_seconds(self._scan_seconds_value()),
-            com_wait_seconds=max(3, int(self.wait_seconds.get())),
-            unpair_before_each_attempt=True,
-            enable_serial_service=bool(self.enable_spp.get()),
-        )
         retrier = PairingRetrier(self._backend)
         self._append_log(
-            f"{len(selected_devices)} 台を順番に処理します。"
+            f"{run_label}: {len(selected_devices)} 台を順番に処理します。"
             f"1台につき最大 {config.max_attempts} 回まで試します"
             f"（各回で 解除 -> ペアリング -> COM待ち最大 {config.com_wait_seconds} 秒）"
         )
@@ -447,7 +539,7 @@ class BluetoothAssistantApp(tk.Tk):
                 for index, device in enumerate(selected_devices, start=1):
                     if self._stop_event.is_set():
                         break
-                    self._queue.put(("status", f"COM探索中: {index}/{len(selected_devices)} 台目"))
+                    self._queue.put(("status", f"{run_label}中: {index}/{len(selected_devices)} 台目"))
                     self._queue.put(
                         (
                             "log",
@@ -464,7 +556,7 @@ class BluetoothAssistantApp(tk.Tk):
                             f"[{index}/{len(selected_devices)}] {device.name or device.address}: {outcome.message}",
                         )
                     )
-                    if outcome.success:
+                    if outcome.success and success_unchecks:
                         self._queue.put(("checked_address", (device.address, False)))
                 devices = self._backend.list_devices(issue_inquiry=False)
                 ports = self._backend.list_com_ports()
@@ -628,6 +720,32 @@ class BluetoothAssistantApp(tk.Tk):
             return
         self._set_checked(row_id, row_id not in self._checked_rows)
 
+    def _show_tree_context_menu(self, event: tk.Event) -> None:
+        row_id = self.tree.identify_row(event.y)
+        if not row_id:
+            return
+        self.tree.selection_set(row_id)
+        self.tree.focus(row_id)
+        self._update_selection_detail()
+
+        state = tk.DISABLED if self._is_worker_running() else tk.NORMAL
+        self.tree_menu.entryconfigure(0, state=state)
+        self.tree_menu.entryconfigure(1, state=state)
+        self.tree_menu.entryconfigure(3, state=state)
+        try:
+            self.tree_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self.tree_menu.grab_release()
+
+    def _toggle_selected_checked(self) -> None:
+        if self._is_worker_running():
+            return
+        selection = self.tree.selection()
+        if not selection:
+            return
+        row_id = selection[0]
+        self._set_checked(row_id, row_id not in self._checked_rows)
+
     def _set_checked(self, row_id: str, checked: bool) -> None:
         if checked:
             self._checked_rows.add(row_id)
@@ -750,6 +868,7 @@ class BluetoothAssistantApp(tk.Tk):
         state = tk.DISABLED if busy else tk.NORMAL
         self.scan_button.configure(state=state)
         self.retry_button.configure(state=state)
+        self.connect_once_button.configure(state=state)
         self.check_all_button.configure(state=state)
         self.clear_checks_button.configure(state=state)
         self.unpair_button.configure(state=state)
