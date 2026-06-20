@@ -25,6 +25,7 @@ py -m bluetooth_assistant --mock
 - COM ポートは `Win32_SerialPort` / Windows PnP Ports / pySerial の `hwid` / `PNPDeviceID` から MAC アドレスを照合します。
 - ペアリング後に Serial Port Profile のサービス有効化を試み、COM ポート作成を促します。
 - PIN不要の SSP ペアリングでは Windows の認証コールバックに自動応答します。環境や機器によって Windows の「デバイスの追加」通知が出る場合は、OS側の同意確認です。
+- このアプリの責務は Windows に COM ポートを出して見つけるところまでです。BLE GATT / DFU / OTA のFW転送は実行しません。
 - 実機 Bluetooth は Windows の状態やペアリング UI に依存するため、自動テストではテスト用バックエンドでリトライ制御を検証し、実機確認は ESP32 で行います。
 
 ## 画面の設定
@@ -34,7 +35,7 @@ py -m bluetooth_assistant --mock
 - `MAC指定`: `AA:BB:CC:DD:EE:FF` 形式で入力した機器を一覧に追加し、チェックを付けます。スキャンに出ないが MAC アドレスは分かる機器向けです。
 - `状態`: Windows側のペアリング状態に加えて、連続処理中は `待機中` / `処理中` / `成功` / `失敗` / `停止` を表示します。
 - `COM候補`: `✓ COMあり` / `▲ COM候補 高` / `△ COM候補 中` / `× COM候補 低` を表示します。
-- `プロファイル候補`: `✓ SPP/COM` / `↔ SPP/COM候補` / `◇ BLE GATT候補` / `⇧ FW/COM候補` / `⇧ FW/DFU候補` / `? 不明` を表示します。
+- `プロファイル候補`: `✓ SPP/COM` / `↔ SPP/COM候補` / `◇ BLE GATT候補` / `⇧ FW/COM候補` / `⇧ FW/DFU候補` / `? 不明` を表示します。COM接続できそうか、またはCOM対象外かもしれないかを見分けるための目安です。
 - `点数`: COM が出そうかを数値化した目安です。高い行ほど先に試す候補です。行を選ぶと理由も下部に表示します。
 - `ログ`: 何台目を処理しているか、ペアリング中か、COMポート待ちか、成功/失敗したかを時系列で表示します。
 - `1台あたり最大試行回数`: 1台の機器に対して、解除 -> ペアリング -> COM待ちを最大何回まで繰り返すかです。COMが出ない機器でも、この回数で必ず止まります。
@@ -68,7 +69,7 @@ py -m bluetooth_assistant --mock --mock-target-address AA:BB:CC:DD:EE:FF --mock-
 
 - COM ポートが出るのは、機器側が Classic Bluetooth の Serial Port Profile (SPP/RFCOMM) を提供している場合です。BLE 専用デバイスでは通常 COM ポートは出ません。
 - `プロファイル候補` は、名前、既存COMポート、Windowsが返したサービスUUIDから推定した目安です。実機の仕様書やFW書き込みツールが指定する接続方式を優先してください。
-- スマートメータのFW書き込みがBLE GATT/DFU/OTA方式の場合、WindowsのCOMポートは出ないことがあります。この場合はCOMリトライではなく、専用のBLE GATT/DFU書き込み経路が必要です。
+- スマートメータのFW書き込みがBLE GATT/DFU/OTA方式の場合、WindowsのCOMポートは出ないことがあります。この場合、このアプリでは接続完了にできません。専用のBLE GATT/DFU書き込みツール側の責務です。
 - PIN や専用コードが不要な SSP 機器では、アプリが Windows の認証要求に自動応答します。
 - 右下に Windows の「デバイスの追加」通知が出る場合があります。これはPIN要求ではなく、Windows 側のユーザー同意確認です。
 - 機器側が固定PINやボタン操作を要求する場合は、完全な無人ペアリングはできないことがあります。

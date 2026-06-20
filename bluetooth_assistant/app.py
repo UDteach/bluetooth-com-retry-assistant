@@ -366,7 +366,8 @@ class BluetoothAssistantApp(tk.Tk):
         self.detail_var = tk.StringVar(
             value="同じMACアドレスが複数見える場合も、候補ごとに行を分けて表示します。"
             "COM候補の点数が高い行から選ぶと成功しやすいです。"
-            "プロファイル候補でSPP/COMか、FW/DFU系かの目安も見られます。"
+            "このアプリの処理対象はCOM接続までです。"
+            "FW/DFU系の表示はCOM対象外かもしれない目安です。"
             "選択列をクリックすると、複数台を順番に処理できます。"
         )
         ttk.Label(lower, textvariable=self.detail_var, anchor=tk.W).grid(row=0, column=0, sticky="ew", pady=(8, 4))
@@ -717,7 +718,8 @@ class BluetoothAssistantApp(tk.Tk):
             self.detail_var.set(
                 "同じMACアドレスが複数見える場合も、候補ごとに行を分けて表示します。"
                 "COM候補の点数が高い行から選ぶと成功しやすいです。"
-                "プロファイル候補でSPP/COMか、FW/DFU系かの目安も見られます。"
+                "このアプリの処理対象はCOM接続までです。"
+                "FW/DFU系の表示はCOM対象外かもしれない目安です。"
                 "選択列をクリックすると、複数台を順番に処理できます。"
             )
             return
