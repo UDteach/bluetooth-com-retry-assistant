@@ -23,6 +23,13 @@ SSP no-PIN mode is enabled.
 Pair this device from Windows Bluetooth settings or BluetoothAssistant.
 ```
 
+Arduino CLIで全ESP32スケッチを先にビルド確認する場合:
+
+```powershell
+.\scripts\setup_esp32_arduino_cli.ps1
+.\scripts\compile_esp32_sketches.ps1
+```
+
 PlatformIOやArduino CLIでビルドする場合、日本語を含むパスでESP32ツールチェーンが失敗することがあります。その場合は `C:\ba_esp32\...` のような英数字だけの一時フォルダへスケッチを置いてビルドしてください。
 
 ## 2. Windows の Bluetooth 一覧で見えるか確認する

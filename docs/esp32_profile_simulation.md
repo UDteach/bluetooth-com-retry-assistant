@@ -33,6 +33,29 @@ Use three boards when available:
 
 If only one spare board is available, reflash it per scenario.
 
+## Local Compile Setup
+
+The ESP32 Arduino toolchain can fail when the project path contains Japanese
+characters. Use an ASCII-only install and work directory:
+
+```powershell
+.\scripts\setup_esp32_arduino_cli.ps1
+.\scripts\compile_esp32_sketches.ps1
+```
+
+Current verified local setup:
+
+- Arduino CLI: `1.5.1`
+- ESP32 Arduino core: `esp32:esp32 3.3.10`
+- CLI/config root: `C:\ba_arduino`
+- temporary compile root: `C:\ba_esp32_compile`
+- board target: `esp32:esp32:esp32`
+
+The setup script downloads Arduino CLI from the official GitHub release,
+verifies the published SHA-256 checksum, configures Espressif's board manager
+URL, and installs the ESP32 core. The compile script copies sketches to an
+ASCII-only temporary folder before invoking `arduino-cli compile`.
+
 ## Expected BluetoothAssistant Behavior
 
 - `BT-COM-MOCK-*`: should eventually become `COMあり` / `SPP/COM`.

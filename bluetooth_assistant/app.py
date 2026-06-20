@@ -10,6 +10,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from tkinter import messagebox, ttk
 
+from . import __version__
 from .com_candidate import assess_com_candidate
 from .mock_backend import MockBluetoothBackend
 from .models import BluetoothDevice, ComPortInfo, find_matching_ports, normalize_address
@@ -771,6 +772,7 @@ class BluetoothAssistantApp(tk.Tk):
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="BluetoothAssistant Tkinter app.")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument(
         "--mock",
         action="store_true",

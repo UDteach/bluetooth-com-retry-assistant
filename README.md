@@ -84,6 +84,8 @@ py -m unittest discover -s tests
 py -m compileall bluetooth_assistant tests
 py -m bluetooth_assistant.diagnostics --json --mock-retry
 py -m bluetooth_assistant.diagnostics --json --mock-retry --mock-com-port COM98
+.\scripts\setup_esp32_arduino_cli.ps1
+.\scripts\compile_esp32_sketches.ps1
 py -m bluetooth_assistant.diagnostics --json --esp32-check --wait-seconds 90
 ```
 
