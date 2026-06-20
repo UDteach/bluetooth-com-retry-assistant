@@ -1,8 +1,10 @@
 import unittest
 
 from bluetooth_assistant.app import (
+    build_com_port_display_rows,
     build_device_display_rows,
     devices_with_manual_devices,
+    format_com_port_summary,
     format_status_text,
     manual_device_from_address,
     retry_config_from_values,
@@ -109,3 +111,24 @@ class AppHelperTests(unittest.TestCase):
         self.assertEqual({row.same_address_count for row in rows}, {2})
         self.assertEqual({row.row_id for row in rows}, {"AA:BB:CC:DD:EE:FF#1", "AA:BB:CC:DD:EE:FF#2"})
         self.assertEqual(rows[0].device.name, "BT-COM-SPP")
+
+    def test_build_com_port_display_rows_sorts_com_numbers(self):
+        ports = [
+            ComPortInfo("COM10", description="ten", source="pnp"),
+            ComPortInfo("COM3", description="three", source="wmi"),
+            ComPortInfo("COM7", description="seven", source="wmi+pnp"),
+        ]
+
+        rows = build_com_port_display_rows(ports)
+
+        self.assertEqual([row[0] for row in rows], ["COM3", "COM7", "COM10"])
+        self.assertEqual(rows[0], ("COM3", "three", "wmi"))
+
+    def test_format_com_port_summary_lists_current_ports(self):
+        ports = [
+            ComPortInfo("COM4", description="USB"),
+            ComPortInfo("COM7", description="Bluetooth"),
+        ]
+
+        self.assertEqual(format_com_port_summary([]), "現在のCOM: 0件")
+        self.assertEqual(format_com_port_summary(ports), "現在のCOM: 2件（COM4, COM7）")

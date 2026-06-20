@@ -126,6 +126,28 @@ def build_device_display_rows(
     )
 
 
+def _com_port_sort_key(port: ComPortInfo) -> tuple[int, int, str]:
+    name = port.device.upper()
+    if name.startswith("COM") and name[3:].isdigit():
+        return (0, int(name[3:]), name)
+    return (1, 0, name)
+
+
+def build_com_port_display_rows(ports: list[ComPortInfo]) -> list[tuple[str, str, str]]:
+    return [
+        (port.device, port.description or port.name, port.source)
+        for port in sorted(ports, key=_com_port_sort_key)
+    ]
+
+
+def format_com_port_summary(ports: list[ComPortInfo]) -> str:
+    rows = build_com_port_display_rows(ports)
+    if not rows:
+        return "現在のCOM: 0件"
+    names = ", ".join(row[0] for row in rows)
+    return f"現在のCOM: {len(rows)}件（{names}）"
+
+
 def _dedupe_devices_by_address(devices: list[BluetoothDevice]) -> list[BluetoothDevice]:
     selected: dict[str, BluetoothDevice] = {}
     for device in devices:
@@ -195,6 +217,7 @@ class BluetoothAssistantApp(tk.Tk):
         self._manual_devices: dict[str, BluetoothDevice] = {}
         self.manual_mac_var = tk.StringVar()
         self.status_var = tk.StringVar(value=format_status_text("待機中", mock_mode=self._mock_mode))
+        self.com_summary_var = tk.StringVar(value=format_com_port_summary([]))
 
         if backend is None:
             try:
@@ -416,7 +439,8 @@ class BluetoothAssistantApp(tk.Tk):
         self.tree.configure(yscrollcommand=scrollbar.set)
 
         lower = ttk.Frame(main)
-        lower.columnconfigure(0, weight=1)
+        lower.columnconfigure(0, weight=3)
+        lower.columnconfigure(2, weight=2)
         lower.rowconfigure(1, weight=1)
         main.add(lower, weight=2)
 
@@ -427,13 +451,61 @@ class BluetoothAssistantApp(tk.Tk):
             "FW/DFU系の表示はCOM対象外かもしれない目安です。"
             "選択列をクリックすると、複数台を順番に処理できます。"
         )
-        ttk.Label(lower, textvariable=self.detail_var, anchor=tk.W).grid(row=0, column=0, sticky="ew", pady=(8, 4))
+        ttk.Label(lower, textvariable=self.detail_var, anchor=tk.W).grid(
+            row=0,
+            column=0,
+            columnspan=3,
+            sticky="ew",
+            pady=(8, 4),
+        )
 
         self.log = tk.Text(lower, height=12, wrap=tk.WORD)
         self.log.grid(row=1, column=0, sticky="nsew")
         log_scrollbar = ttk.Scrollbar(lower, orient=tk.VERTICAL, command=self.log.yview)
         log_scrollbar.grid(row=1, column=1, sticky="ns")
         self.log.configure(yscrollcommand=log_scrollbar.set)
+
+        com_frame = ttk.LabelFrame(lower, text="現在のCOM一覧", padding=(6, 4))
+        com_frame.grid(row=1, column=2, sticky="nsew", padx=(10, 0))
+        com_frame.columnconfigure(0, weight=1)
+        com_frame.rowconfigure(1, weight=1)
+        Tooltip(
+            com_frame,
+            "Windowsに今見えているCOMポートです。\n\n"
+            "USB書き込み用のCOMと、Bluetooth接続で増えたCOMをまとめて表示します。"
+            "Bluetooth機器行のCOM列は、この一覧から対象MACに一致したものです。",
+        )
+
+        com_header = ttk.Frame(com_frame)
+        com_header.grid(row=0, column=0, sticky="ew", pady=(0, 4))
+        com_header.columnconfigure(0, weight=1)
+        ttk.Label(com_header, textvariable=self.com_summary_var, anchor=tk.W).grid(row=0, column=0, sticky="ew")
+        self.refresh_com_button = ttk.Button(com_header, text="COM再読込", command=self._refresh_com_ports_only)
+        self.refresh_com_button.grid(row=0, column=1, padx=(8, 0))
+        Tooltip(
+            self.refresh_com_button,
+            "Bluetoothスキャンはせず、Windowsに今あるCOMポートだけを読み直します。",
+        )
+
+        com_columns = ("device", "description", "source")
+        self.com_tree = ttk.Treeview(com_frame, columns=com_columns, show="headings", height=6, selectmode="none")
+        com_headings = {
+            "device": "COM",
+            "description": "説明",
+            "source": "取得元",
+        }
+        com_widths = {
+            "device": 70,
+            "description": 250,
+            "source": 80,
+        }
+        for column in com_columns:
+            self.com_tree.heading(column, text=com_headings[column])
+            self.com_tree.column(column, width=com_widths[column], anchor=tk.W)
+        self.com_tree.grid(row=1, column=0, sticky="nsew")
+        com_scrollbar = ttk.Scrollbar(com_frame, orient=tk.VERTICAL, command=self.com_tree.yview)
+        com_scrollbar.grid(row=1, column=1, sticky="ns")
+        self.com_tree.configure(yscrollcommand=com_scrollbar.set)
 
     def _scan_devices(self) -> None:
         if self._is_worker_running():
@@ -602,6 +674,25 @@ class BluetoothAssistantApp(tk.Tk):
         self._set_status("停止要求を送信しました")
         self._append_log("停止要求を送信しました")
 
+    def _refresh_com_ports_only(self) -> None:
+        if self._is_worker_running():
+            return
+
+        self._set_busy(True)
+        self._set_status("COM再読込中")
+
+        def work() -> None:
+            try:
+                ports = self._backend.list_com_ports()
+                self._queue.put(("ports", ports))
+            except Exception as exc:
+                self._queue.put(("error", exc))
+            finally:
+                self._queue.put(("busy", False))
+
+        self._worker = threading.Thread(target=work, daemon=True)
+        self._worker.start()
+
     def _pump_queue(self) -> None:
         try:
             while True:
@@ -609,6 +700,10 @@ class BluetoothAssistantApp(tk.Tk):
                 if kind == "devices":
                     devices, ports = payload  # type: ignore[misc]
                     self._update_devices(devices, ports)
+                elif kind == "ports":
+                    ports = payload
+                    assert isinstance(ports, list)
+                    self._update_ports(ports)
                 elif kind == "retry_event":
                     event = payload
                     assert isinstance(event, RetryEvent)
@@ -668,6 +763,7 @@ class BluetoothAssistantApp(tk.Tk):
         self._same_address_count_by_row = {row.row_id: row.same_address_count for row in rows}
         self._checked_rows.intersection_update(self._devices)
         self._ports = ports
+        self._refresh_com_rows()
         selected_row_id = self.tree.selection()[0] if self.tree.selection() else ""
         self.tree.delete(*self.tree.get_children())
         for row in rows:
@@ -678,6 +774,23 @@ class BluetoothAssistantApp(tk.Tk):
         if not self._is_worker_running():
             self._set_status(f"待機中: {len(rows)}行 / COM {len(ports)}件")
         self._update_selection_detail()
+
+    def _update_ports(self, ports: list[ComPortInfo]) -> None:
+        self._ports = ports
+        self._refresh_com_rows()
+        self._refresh_tree_rows()
+        self._update_selection_detail()
+        self._append_log(f"COM一覧を更新しました: {len(ports)} 件")
+        if not self._is_worker_running():
+            self._set_status(f"待機中: {len(self._devices)}行 / COM {len(ports)}件")
+
+    def _refresh_com_rows(self) -> None:
+        self.com_summary_var.set(format_com_port_summary(self._ports))
+        if not hasattr(self, "com_tree"):
+            return
+        self.com_tree.delete(*self.com_tree.get_children())
+        for index, row in enumerate(build_com_port_display_rows(self._ports)):
+            self.com_tree.insert("", tk.END, iid=f"com-{index}", values=row)
 
     def _refresh_tree_rows(self) -> None:
         for row_id, device in self._devices.items():
@@ -874,6 +987,7 @@ class BluetoothAssistantApp(tk.Tk):
         self.unpair_button.configure(state=state)
         self.manual_mac_entry.configure(state=state)
         self.add_mac_button.configure(state=state)
+        self.refresh_com_button.configure(state=state)
         self.stop_button.configure(state=tk.NORMAL if self._retrying else tk.DISABLED)
         if not busy and not self._devices:
             self._set_status("待機中")
