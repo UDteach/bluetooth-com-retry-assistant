@@ -17,6 +17,8 @@ class ComCandidateTests(unittest.TestCase):
         assessment = assess_com_candidate(device, ports)
 
         self.assertEqual(assessment.label, "COMあり")
+        self.assertEqual(assessment.icon, "✓")
+        self.assertEqual(assessment.display_label, "✓ COMあり")
         self.assertGreaterEqual(assessment.score, 100)
 
     def test_spp_name_is_high_candidate(self):
@@ -25,6 +27,7 @@ class ComCandidateTests(unittest.TestCase):
         assessment = assess_com_candidate(device, [])
 
         self.assertEqual(assessment.label, "COM候補 高")
+        self.assertEqual(assessment.icon, "▲")
         self.assertIn("名前にSPP/Serial/COM系のヒントがあります", assessment.reasons)
 
     def test_no_com_name_is_low_candidate(self):
@@ -33,7 +36,15 @@ class ComCandidateTests(unittest.TestCase):
         assessment = assess_com_candidate(device, [])
 
         self.assertEqual(assessment.label, "COM候補 低")
+        self.assertEqual(assessment.icon, "×")
         self.assertIn("名前にCOMが出にくいヒントがあります", assessment.reasons)
+
+    def test_same_address_count_adds_duplicate_reason(self):
+        device = BluetoothDevice("AA:BB:CC:DD:EE:FF", name="Unknown")
+
+        assessment = assess_com_candidate(device, [], same_address_count=2)
+
+        self.assertIn("同じMACが2件見えています", assessment.reasons)
 
 
 if __name__ == "__main__":

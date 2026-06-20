@@ -6,6 +6,7 @@ import json
 import platform
 import sys
 import time
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from typing import Any
@@ -176,12 +177,20 @@ def _run_hardware_poll(
         )
 
     if devices:
+        same_address_counts = Counter(device.address for device in devices)
         results.append(
             CheckResult(
                 "hardware_com_candidates",
                 True,
                 f"{len(devices)} candidate(s)",
-                [_candidate_data(device, ports) for device in devices],
+                [
+                    _candidate_data(
+                        device,
+                        ports,
+                        same_address_count=same_address_counts[device.address],
+                    )
+                    for device in devices
+                ],
             )
         )
 
@@ -250,13 +259,21 @@ def _devices_matching_name(devices: list[BluetoothDevice], expected_name: str) -
     return matches
 
 
-def _candidate_data(device: BluetoothDevice, ports: list[ComPortInfo]) -> dict[str, Any]:
-    assessment = assess_com_candidate(device, ports)
+def _candidate_data(
+    device: BluetoothDevice,
+    ports: list[ComPortInfo],
+    *,
+    same_address_count: int = 1,
+) -> dict[str, Any]:
+    assessment = assess_com_candidate(device, ports, same_address_count=same_address_count)
     return {
         "address": device.address,
         "name": device.name,
         "label": assessment.label,
+        "display_label": assessment.display_label,
+        "icon": assessment.icon,
         "score": assessment.score,
+        "same_address_count": same_address_count,
         "reasons": assessment.reasons,
     }
 
@@ -420,12 +437,21 @@ def _resolve_target_device(
         )
 
     matches = _devices_matching_name(devices, target_name)
-    if len(matches) != 1:
+    matched_addresses = {device.address for device in matches}
+    if len(matches) != 1 and len(matched_addresses) != 1:
         return CheckResult(
             "hardware_pairing_resolve_target",
             False,
             f"Expected exactly one device matching {target_name!r}, found {len(matches)}.",
             {"target_name": target_name, "matches": [asdict(device) for device in matches]},
+        )
+    if len(matches) > 1 and len(matched_addresses) == 1:
+        address = next(iter(matched_addresses))
+        return CheckResult(
+            "hardware_pairing_resolve_target",
+            True,
+            address,
+            {"address": address, "devices": [asdict(device) for device in matches]},
         )
     return CheckResult(
         "hardware_pairing_resolve_target",

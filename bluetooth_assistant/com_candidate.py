@@ -12,10 +12,20 @@ _NEGATIVE_NAME_HINTS = ("no-com", "nocom", "ble", "beacon", "keyboard", "mouse",
 class ComCandidateAssessment:
     label: str
     score: int
+    icon: str
     reasons: list[str] = field(default_factory=list)
 
+    @property
+    def display_label(self) -> str:
+        return f"{self.icon} {self.label}"
 
-def assess_com_candidate(device: BluetoothDevice, ports: list[ComPortInfo]) -> ComCandidateAssessment:
+
+def assess_com_candidate(
+    device: BluetoothDevice,
+    ports: list[ComPortInfo],
+    *,
+    same_address_count: int | None = None,
+) -> ComCandidateAssessment:
     score = 0
     reasons: list[str] = []
 
@@ -44,23 +54,28 @@ def assess_com_candidate(device: BluetoothDevice, ports: list[ComPortInfo]) -> C
         score += 8
         reasons.append("接続中です")
 
-    if device.raw_count > 1:
+    duplicate_count = same_address_count if same_address_count is not None else device.raw_count
+    if duplicate_count > 1:
         score += 5
-        reasons.append("同じMACが複数見えています")
+        reasons.append(f"同じMACが{duplicate_count}件見えています")
 
     if score >= 80:
         label = "COMあり"
+        icon = "✓"
     elif score >= 35:
         label = "COM候補 高"
+        icon = "▲"
     elif score >= 10:
         label = "COM候補 中"
+        icon = "△"
     else:
         label = "COM候補 低"
+        icon = "×"
 
     if not reasons:
         reasons.append("COMが出る手がかりはまだ少なめです")
 
-    return ComCandidateAssessment(label=label, score=score, reasons=reasons)
+    return ComCandidateAssessment(label=label, score=score, icon=icon, reasons=reasons)
 
 
 def _device_name_text(device: BluetoothDevice) -> str:

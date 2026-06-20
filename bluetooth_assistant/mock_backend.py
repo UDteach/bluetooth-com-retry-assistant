@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
-from .models import BluetoothDevice, ComPortInfo, OperationResult, merge_duplicate_devices, normalize_address
+from .models import BluetoothDevice, ComPortInfo, OperationResult, normalize_address
 
 
 @dataclass(slots=True)
@@ -107,7 +107,7 @@ class MockBluetoothBackend:
                         last_seen=f"テスト重複 {self.scan_count}",
                     )
                 )
-        return merge_duplicate_devices(devices)
+        return sorted(devices, key=lambda item: (item.address, item.name.lower(), item.last_seen))
 
     def pair(self, address: str, pin: str = "") -> OperationResult:
         _ = pin

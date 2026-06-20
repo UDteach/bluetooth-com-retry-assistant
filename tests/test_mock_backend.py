@@ -43,16 +43,16 @@ class MockBackendTests(unittest.TestCase):
         self.assertEqual(find_matching_ports("AA:BB:CC:DD:EE:FF", ports), [])
         self.assertEqual([port.device for port in find_matching_ports("33:44:55:66:77:88", ports)], [])
 
-    def test_duplicate_mock_devices_are_merged_by_mac(self):
+    def test_duplicate_mock_devices_are_returned_as_separate_rows(self):
         backend = MockBluetoothBackend()
 
         devices = backend.list_devices()
-        target = next(device for device in devices if device.address == "AA:BB:CC:DD:EE:FF")
-        slow = next(device for device in devices if device.address == "11:22:33:44:55:66")
+        target_rows = [device for device in devices if device.address == "AA:BB:CC:DD:EE:FF"]
+        slow_rows = [device for device in devices if device.address == "11:22:33:44:55:66"]
 
-        self.assertEqual(target.raw_count, 2)
-        self.assertEqual(slow.raw_count, 2)
-        self.assertEqual(len({device.address for device in devices}), len(devices))
+        self.assertEqual(len(target_rows), 2)
+        self.assertEqual(len(slow_rows), 2)
+        self.assertLess(len({device.address for device in devices}), len(devices))
 
     def test_default_device_names_do_not_show_mock_label(self):
         backend = MockBluetoothBackend()

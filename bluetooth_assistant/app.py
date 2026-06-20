@@ -6,11 +6,13 @@ import queue
 import threading
 import time
 import tkinter as tk
+from collections import Counter, defaultdict
+from dataclasses import dataclass
 from tkinter import messagebox, ttk
 
 from .com_candidate import assess_com_candidate
 from .mock_backend import MockBluetoothBackend
-from .models import BluetoothDevice, ComPortInfo, find_matching_ports, merge_duplicate_devices, normalize_address
+from .models import BluetoothDevice, ComPortInfo, find_matching_ports, normalize_address
 from .retry import BluetoothBackend, PairingRetrier, RetryConfig, RetryEvent
 from .windows_bluetooth import BluetoothError, UnsupportedPlatformError, WindowsBluetoothBackend
 
@@ -37,11 +39,55 @@ def manual_device_from_address(address: str) -> BluetoothDevice:
     return BluetoothDevice(normalize_address(address), name="手入力", remembered=True, last_seen="手入力")
 
 
-def merge_with_manual_devices(
+@dataclass(frozen=True, slots=True)
+class DeviceDisplayRow:
+    row_id: str
+    device: BluetoothDevice
+    same_address_count: int
+
+
+def devices_with_manual_devices(
     devices: list[BluetoothDevice],
     manual_devices: dict[str, BluetoothDevice],
 ) -> list[BluetoothDevice]:
-    return merge_duplicate_devices([*devices, *manual_devices.values()])
+    return sorted(
+        [*devices, *manual_devices.values()],
+        key=lambda device: (device.address, device.name.lower(), device.last_seen, device.last_used),
+    )
+
+
+def build_device_display_rows(
+    devices: list[BluetoothDevice],
+    ports: list[ComPortInfo],
+) -> list[DeviceDisplayRow]:
+    counts = Counter(device.address for device in devices)
+    occurrence_by_address: defaultdict[str, int] = defaultdict(int)
+    rows: list[DeviceDisplayRow] = []
+    for device in devices:
+        occurrence_by_address[device.address] += 1
+        row_id = f"{device.address}#{occurrence_by_address[device.address]}"
+        rows.append(DeviceDisplayRow(row_id, device, counts[device.address]))
+
+    return sorted(
+        rows,
+        key=lambda row: (
+            -assess_com_candidate(
+                row.device,
+                ports,
+                same_address_count=row.same_address_count,
+            ).score,
+            row.device.address,
+            row.device.name.lower(),
+            row.row_id,
+        ),
+    )
+
+
+def _dedupe_devices_by_address(devices: list[BluetoothDevice]) -> list[BluetoothDevice]:
+    selected: dict[str, BluetoothDevice] = {}
+    for device in devices:
+        selected.setdefault(device.address, device)
+    return list(selected.values())
 
 
 class Tooltip:
@@ -98,8 +144,10 @@ class BluetoothAssistantApp(tk.Tk):
         self._worker: threading.Thread | None = None
         self._retrying = False
         self._devices: dict[str, BluetoothDevice] = {}
+        self._same_address_count_by_row: dict[str, int] = {}
+        self._last_scanned_devices: list[BluetoothDevice] = []
         self._ports: list[ComPortInfo] = []
-        self._checked_addresses: set[str] = set()
+        self._checked_rows: set[str] = set()
         self._run_status_by_address: dict[str, str] = {}
         self._manual_devices: dict[str, BluetoothDevice] = {}
         self.manual_mac_var = tk.StringVar()
@@ -173,7 +221,7 @@ class BluetoothAssistantApp(tk.Tk):
             padx=(12, 0),
         )
 
-        max_attempts_label = ttk.Label(toolbar, text="1台あたり最大試行回数")
+        max_attempts_label = ttk.Label(toolbar, text="1台あたり試行上限")
         max_attempts_label.grid(row=1, column=0, padx=(0, 4), pady=(8, 0))
         self.max_attempts = tk.IntVar(value=5)
         max_attempts_box = ttk.Spinbox(toolbar, from_=1, to=50, width=6, textvariable=self.max_attempts)
@@ -260,13 +308,14 @@ class BluetoothAssistantApp(tk.Tk):
         device_frame.rowconfigure(0, weight=1)
         main.add(device_frame, weight=3)
 
-        columns = ("checked", "name", "address", "candidate", "status", "com", "class", "last_seen")
+        columns = ("checked", "name", "address", "candidate", "score", "status", "com", "class", "last_seen")
         self.tree = ttk.Treeview(device_frame, columns=columns, show="headings", selectmode="browse")
         headings = {
             "checked": "選択",
             "name": "名前",
             "address": "MAC",
             "candidate": "COM候補",
+            "score": "点数",
             "status": "状態",
             "com": "COM",
             "class": "Class",
@@ -276,7 +325,8 @@ class BluetoothAssistantApp(tk.Tk):
             "checked": 64,
             "name": 240,
             "address": 150,
-            "candidate": 110,
+            "candidate": 130,
+            "score": 60,
             "status": 180,
             "com": 120,
             "class": 90,
@@ -299,8 +349,8 @@ class BluetoothAssistantApp(tk.Tk):
         main.add(lower, weight=2)
 
         self.detail_var = tk.StringVar(
-            value="同じ機器が複数見えても、同じMACアドレスなら1行にまとめます。"
-            "COM候補が高い行から選ぶと成功しやすいです。"
+            value="同じMACアドレスが複数見える場合も、候補ごとに行を分けて表示します。"
+            "COM候補の点数が高い行から選ぶと成功しやすいです。"
             "選択列をクリックすると、複数台を順番に処理できます。"
         )
         ttk.Label(lower, textvariable=self.detail_var, anchor=tk.W).grid(row=0, column=0, sticky="ew", pady=(8, 4))
@@ -397,7 +447,7 @@ class BluetoothAssistantApp(tk.Tk):
                         )
                     )
                     if outcome.success:
-                        self._queue.put(("checked", (device.address, False)))
+                        self._queue.put(("checked_address", (device.address, False)))
                 devices = self._backend.list_devices(issue_inquiry=False)
                 ports = self._backend.list_com_ports()
                 self._queue.put(("devices", (devices, ports)))
@@ -461,9 +511,9 @@ class BluetoothAssistantApp(tk.Tk):
                 elif kind == "error":
                     self._append_log(f"エラー: {payload}")
                     messagebox.showerror("エラー", str(payload))
-                elif kind == "checked":
+                elif kind == "checked_address":
                     address, checked = payload  # type: ignore[misc]
-                    self._set_checked(str(address), bool(checked))
+                    self._set_checked_for_address(str(address), bool(checked))
                 elif kind == "run_status":
                     address, status_text = payload  # type: ignore[misc]
                     self._run_status_by_address[str(address)] = str(status_text)
@@ -490,45 +540,52 @@ class BluetoothAssistantApp(tk.Tk):
             return
 
         self._manual_devices[device.address] = device
-        self._checked_addresses.add(device.address)
         self.manual_mac_var.set("")
-        self._update_devices(list(self._devices.values()), self._ports)
-        if self.tree.exists(device.address):
-            self.tree.selection_set(device.address)
-            self.tree.see(device.address)
+        self._update_devices(self._last_scanned_devices, self._ports)
+        row_id = self._first_row_id_for_address(device.address)
+        if row_id:
+            self._checked_rows.add(row_id)
+            self.tree.selection_set(row_id)
+            self.tree.see(row_id)
+            self._refresh_tree_rows()
         self._append_log(f"{device.address} を手入力で追加しました")
 
     def _update_devices(self, devices: list[BluetoothDevice], ports: list[ComPortInfo]) -> None:
-        merged_devices = merge_with_manual_devices(devices, self._manual_devices)
-        self._devices = {device.address: device for device in merged_devices}
-        self._checked_addresses.intersection_update(self._devices)
+        self._last_scanned_devices = list(devices)
+        display_devices = devices_with_manual_devices(devices, self._manual_devices)
+        rows = build_device_display_rows(display_devices, ports)
+        self._devices = {row.row_id: row.device for row in rows}
+        self._same_address_count_by_row = {row.row_id: row.same_address_count for row in rows}
+        self._checked_rows.intersection_update(self._devices)
         self._ports = ports
-        selected_address = self.tree.selection()[0] if self.tree.selection() else ""
+        selected_row_id = self.tree.selection()[0] if self.tree.selection() else ""
         self.tree.delete(*self.tree.get_children())
-        for device in merged_devices:
-            self.tree.insert("", tk.END, iid=device.address, values=self._row_values(device))
-        if selected_address in self._devices:
-            self.tree.selection_set(selected_address)
-        self._append_log(f"{len(merged_devices)} 台を表示しました / COM {len(ports)} 件")
+        for row in rows:
+            self.tree.insert("", tk.END, iid=row.row_id, values=self._row_values(row.row_id, row.device))
+        if selected_row_id in self._devices:
+            self.tree.selection_set(selected_row_id)
+        self._append_log(f"{len(rows)} 行を表示しました / COM {len(ports)} 件")
         if not self._is_worker_running():
-            self._set_status(f"待機中: {len(merged_devices)}台 / COM {len(ports)}件")
+            self._set_status(f"待機中: {len(rows)}行 / COM {len(ports)}件")
         self._update_selection_detail()
 
     def _refresh_tree_rows(self) -> None:
-        for address, device in self._devices.items():
-            if self.tree.exists(address):
-                self.tree.item(address, values=self._row_values(device))
+        for row_id, device in self._devices.items():
+            if self.tree.exists(row_id):
+                self.tree.item(row_id, values=self._row_values(row_id, device))
 
-    def _row_values(self, device: BluetoothDevice) -> tuple[str, str, str, str, str, str, str, str]:
+    def _row_values(self, row_id: str, device: BluetoothDevice) -> tuple[str, str, str, str, str, str, str, str, str]:
         matched_ports = find_matching_ports(device.address, self._ports)
-        assessment = assess_com_candidate(device, self._ports)
+        same_address_count = self._same_address_count_by_row.get(row_id, 1)
+        assessment = assess_com_candidate(device, self._ports, same_address_count=same_address_count)
         run_status = self._run_status_by_address.get(device.address, "")
         status_text = device.status_text if not run_status else f"{run_status} / {device.status_text}"
         return (
-            "☑" if device.address in self._checked_addresses else "☐",
+            "☑" if row_id in self._checked_rows else "☐",
             device.name or "(名前なし)",
             device.address,
-            assessment.label,
+            assessment.display_label,
+            str(assessment.score),
             status_text,
             ", ".join(port.device for port in matched_ports),
             f"0x{device.class_of_device:06X}" if device.class_of_device else "",
@@ -545,30 +602,41 @@ class BluetoothAssistantApp(tk.Tk):
         row_id = self.tree.identify_row(event.y)
         if not row_id:
             return
-        self._set_checked(row_id, row_id not in self._checked_addresses)
+        self._set_checked(row_id, row_id not in self._checked_rows)
 
-    def _set_checked(self, address: str, checked: bool) -> None:
+    def _set_checked(self, row_id: str, checked: bool) -> None:
         if checked:
-            self._checked_addresses.add(address)
+            self._checked_rows.add(row_id)
         else:
-            self._checked_addresses.discard(address)
-        if self.tree.exists(address):
-            values = list(self.tree.item(address, "values"))
+            self._checked_rows.discard(row_id)
+        if self.tree.exists(row_id):
+            values = list(self.tree.item(row_id, "values"))
             if values:
                 values[0] = "☑" if checked else "☐"
-                self.tree.item(address, values=values)
+                self.tree.item(row_id, values=values)
         self._update_selection_detail()
 
+    def _set_checked_for_address(self, address: str, checked: bool) -> None:
+        for row_id, device in self._devices.items():
+            if device.address == address:
+                self._set_checked(row_id, checked)
+
     def _check_all_visible(self) -> None:
-        for address in self.tree.get_children():
-            self._checked_addresses.add(str(address))
+        for row_id in self.tree.get_children():
+            self._checked_rows.add(str(row_id))
         self._refresh_tree_rows()
         self._update_selection_detail()
 
     def _clear_checks(self) -> None:
-        self._checked_addresses.clear()
+        self._checked_rows.clear()
         self._refresh_tree_rows()
         self._update_selection_detail()
+
+    def _first_row_id_for_address(self, address: str) -> str:
+        for row_id, device in self._devices.items():
+            if device.address == address:
+                return row_id
+        return ""
 
     def _scan_seconds_value(self) -> int:
         try:
@@ -585,7 +653,7 @@ class BluetoothAssistantApp(tk.Tk):
         started = time.perf_counter()
         deadline = started + scan_seconds
         scan_count = 0
-        found: dict[str, BluetoothDevice] = {}
+        found: dict[tuple[str, str, int, int], BluetoothDevice] = {}
 
         while True:
             scan_count += 1
@@ -594,11 +662,14 @@ class BluetoothAssistantApp(tk.Tk):
                 issue_inquiry=True,
                 timeout_multiplier=timeout_multiplier,
             )
+            occurrence_by_signature: defaultdict[tuple[str, str, int], int] = defaultdict(int)
             for device in devices:
-                found[device.address] = device
+                signature = (device.address, device.name, device.class_of_device)
+                occurrence_by_signature[signature] += 1
+                found[(*signature, occurrence_by_signature[signature])] = device
             elapsed = time.perf_counter() - started
             if elapsed >= scan_seconds:
-                return merge_duplicate_devices(found.values()), elapsed, scan_count
+                return list(found.values()), elapsed, scan_count
             time.sleep(min(1.0, max(0.1, deadline - time.perf_counter())))
 
     def _selected_device(self) -> BluetoothDevice | None:
@@ -608,9 +679,13 @@ class BluetoothAssistantApp(tk.Tk):
         return self._devices.get(selection[0])
 
     def _selected_devices_for_retry(self) -> list[BluetoothDevice]:
-        checked = [self._devices[address] for address in self.tree.get_children() if address in self._checked_addresses]
+        checked = [
+            self._devices[row_id]
+            for row_id in self.tree.get_children()
+            if row_id in self._checked_rows
+        ]
         if checked:
-            return checked
+            return _dedupe_devices_by_address(checked)
         selected = self._selected_device()
         return [selected] if selected is not None else []
 
@@ -618,21 +693,23 @@ class BluetoothAssistantApp(tk.Tk):
         selected = self._selected_device()
         if selected is None:
             self.detail_var.set(
-                "同じ機器が複数見えても、同じMACアドレスなら1行にまとめます。"
-                "COM候補が高い行から選ぶと成功しやすいです。"
+                "同じMACアドレスが複数見える場合も、候補ごとに行を分けて表示します。"
+                "COM候補の点数が高い行から選ぶと成功しやすいです。"
                 "選択列をクリックすると、複数台を順番に処理できます。"
             )
             return
+        selected_row_id = self.tree.selection()[0]
+        same_address_count = self._same_address_count_by_row.get(selected_row_id, 1)
         ports = find_matching_ports(selected.address, self._ports)
-        names = ", ".join(selected.raw_names) if selected.raw_names else selected.name
         port_text = ", ".join(port.device for port in ports) if ports else "未検出"
-        checked_count = len(self._checked_addresses)
-        assessment = assess_com_candidate(selected, self._ports)
+        checked_count = len(self._checked_rows)
+        assessment = assess_com_candidate(selected, self._ports, same_address_count=same_address_count)
         reason_text = " / ".join(assessment.reasons)
         self.detail_var.set(
-            f"{selected.address} / {names or '(名前なし)'} / {selected.status_text} / "
-            f"{assessment.label}({assessment.score}点): {reason_text} / COM: {port_text} / "
-            f"チェック中: {checked_count}台"
+            f"{assessment.display_label} {assessment.score}点 / {selected.address} / "
+            f"{selected.name or '(名前なし)'} / {selected.status_text} / "
+            f"同じMACの候補: {same_address_count}行 / COM: {port_text} / "
+            f"理由: {reason_text} / チェック中: {checked_count}行"
         )
 
     def _set_busy(self, busy: bool, *, retrying: bool = False) -> None:

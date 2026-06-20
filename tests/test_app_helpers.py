@@ -1,13 +1,14 @@
 import unittest
 
 from bluetooth_assistant.app import (
+    build_device_display_rows,
+    devices_with_manual_devices,
     format_status_text,
     manual_device_from_address,
-    merge_with_manual_devices,
     timeout_multiplier_from_seconds,
     window_title_for_mode,
 )
-from bluetooth_assistant.models import BluetoothDevice
+from bluetooth_assistant.models import BluetoothDevice, ComPortInfo
 
 
 class AppHelperTests(unittest.TestCase):
@@ -44,25 +45,42 @@ class AppHelperTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             manual_device_from_address("not-a-mac")
 
-    def test_merge_with_manual_devices_keeps_manual_after_scan(self):
+    def test_devices_with_manual_devices_keeps_manual_after_scan(self):
         manual = manual_device_from_address("AA:BB:CC:DD:EE:FF")
         scanned = [BluetoothDevice("11:22:33:44:55:66", name="Scanned")]
 
-        merged = merge_with_manual_devices(scanned, {manual.address: manual})
+        merged = devices_with_manual_devices(scanned, {manual.address: manual})
 
         self.assertEqual(
             {device.address for device in merged},
             {"AA:BB:CC:DD:EE:FF", "11:22:33:44:55:66"},
         )
 
-    def test_merge_with_manual_devices_merges_same_mac_names(self):
+    def test_devices_with_manual_devices_keeps_same_mac_rows(self):
         manual = manual_device_from_address("AA:BB:CC:DD:EE:FF")
         scanned = [BluetoothDevice("AA:BB:CC:DD:EE:FF", name="Scanned Name", authenticated=True)]
 
-        merged = merge_with_manual_devices(scanned, {manual.address: manual})
+        merged = devices_with_manual_devices(scanned, {manual.address: manual})
 
-        self.assertEqual(len(merged), 1)
-        self.assertEqual(merged[0].address, "AA:BB:CC:DD:EE:FF")
-        self.assertTrue(merged[0].authenticated)
-        self.assertIn("Scanned Name", merged[0].raw_names)
-        self.assertIn("手入力", merged[0].raw_names)
+        self.assertEqual(len(merged), 2)
+        self.assertEqual([device.address for device in merged], ["AA:BB:CC:DD:EE:FF", "AA:BB:CC:DD:EE:FF"])
+        self.assertEqual({device.name for device in merged}, {"Scanned Name", "手入力"})
+
+    def test_build_device_display_rows_scores_and_numbers_duplicate_mac_rows(self):
+        devices = [
+            BluetoothDevice("AA:BB:CC:DD:EE:FF", name="BT-NO-COM"),
+            BluetoothDevice("AA:BB:CC:DD:EE:FF", name="BT-COM-SPP"),
+        ]
+        ports = [
+            ComPortInfo(
+                "COM12",
+                hwid="BTHENUM\\{00001101-0000-1000-8000-00805F9B34FB}\\7&MOCK&0&AABBCCDDEEFF",
+            )
+        ]
+
+        rows = build_device_display_rows(devices, ports)
+
+        self.assertEqual(len(rows), 2)
+        self.assertEqual({row.same_address_count for row in rows}, {2})
+        self.assertEqual({row.row_id for row in rows}, {"AA:BB:CC:DD:EE:FF#1", "AA:BB:CC:DD:EE:FF#2"})
+        self.assertEqual(rows[0].device.name, "BT-COM-SPP")

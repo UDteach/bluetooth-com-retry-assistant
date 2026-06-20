@@ -70,6 +70,8 @@ class DiagnosticsTests(unittest.TestCase):
         self.assertTrue(by_name["expect_com_port"].ok)
         self.assertTrue(by_name["hardware_com_candidates"].ok)
         self.assertEqual(by_name["hardware_com_candidates"].data[0]["label"], "COMあり")
+        self.assertEqual(by_name["hardware_com_candidates"].data[0]["icon"], "✓")
+        self.assertEqual(by_name["hardware_com_candidates"].data[0]["display_label"], "✓ COMあり")
 
     def test_hardware_expectations_report_missing_device(self):
         results = run_hardware_expectations(
@@ -189,3 +191,28 @@ class DiagnosticsTests(unittest.TestCase):
 
         self.assertFalse(by_name["hardware_pairing_resolve_target"].ok)
         self.assertNotIn("hardware_pairing_outcome", by_name)
+
+    def test_hardware_pairing_test_accepts_duplicate_rows_for_same_mac(self):
+        backend = MockBluetoothBackend(
+            scenarios=[
+                MockDeviceScenario(
+                    "AA:BB:CC:DD:EE:FF",
+                    "BT-COM-MOCK",
+                    "COM12",
+                    appear_after_pair_count=1,
+                    duplicate_devices=True,
+                )
+            ]
+        )
+
+        results = run_hardware_pairing_test(
+            target_name="BT-COM-MOCK",
+            com_wait_seconds=0,
+            backend=backend,
+            sleeper=lambda _seconds: None,
+        )
+        by_name = {result.name: result for result in results}
+
+        self.assertTrue(by_name["hardware_pairing_resolve_target"].ok)
+        self.assertTrue(by_name["hardware_pairing_outcome"].ok)
+        self.assertEqual(by_name["hardware_pairing_resolve_target"].data["address"], "AA:BB:CC:DD:EE:FF")
