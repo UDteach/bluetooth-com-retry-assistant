@@ -34,6 +34,7 @@ py -m bluetooth_assistant --mock
 - `MAC指定`: `AA:BB:CC:DD:EE:FF` 形式で入力した機器を一覧に追加し、チェックを付けます。スキャンに出ないが MAC アドレスは分かる機器向けです。
 - `状態`: Windows側のペアリング状態に加えて、連続処理中は `待機中` / `処理中` / `成功` / `失敗` / `停止` を表示します。
 - `COM候補`: `✓ COMあり` / `▲ COM候補 高` / `△ COM候補 中` / `× COM候補 低` を表示します。
+- `プロファイル候補`: `✓ SPP/COM` / `↔ SPP/COM候補` / `◇ BLE GATT候補` / `⇧ FW/COM候補` / `⇧ FW/DFU候補` / `? 不明` を表示します。
 - `点数`: COM が出そうかを数値化した目安です。高い行ほど先に試す候補です。行を選ぶと理由も下部に表示します。
 - `ログ`: 何台目を処理しているか、ペアリング中か、COMポート待ちか、成功/失敗したかを時系列で表示します。
 - `1台あたり最大試行回数`: 1台の機器に対して、解除 -> ペアリング -> COM待ちを最大何回まで繰り返すかです。COMが出ない機器でも、この回数で必ず止まります。
@@ -66,6 +67,8 @@ py -m bluetooth_assistant --mock --mock-target-address AA:BB:CC:DD:EE:FF --mock-
 ## 注意
 
 - COM ポートが出るのは、機器側が Classic Bluetooth の Serial Port Profile (SPP/RFCOMM) を提供している場合です。BLE 専用デバイスでは通常 COM ポートは出ません。
+- `プロファイル候補` は、名前、既存COMポート、Windowsが返したサービスUUIDから推定した目安です。実機の仕様書やFW書き込みツールが指定する接続方式を優先してください。
+- スマートメータのFW書き込みがBLE GATT/DFU/OTA方式の場合、WindowsのCOMポートは出ないことがあります。この場合はCOMリトライではなく、専用のBLE GATT/DFU書き込み経路が必要です。
 - PIN や専用コードが不要な SSP 機器では、アプリが Windows の認証要求に自動応答します。
 - 右下に Windows の「デバイスの追加」通知が出る場合があります。これはPIN要求ではなく、Windows 側のユーザー同意確認です。
 - 機器側が固定PINやボタン操作を要求する場合は、完全な無人ペアリングはできないことがあります。
@@ -136,6 +139,10 @@ pip install -r requirements-dev.txt
 - Microsoft Learn: Windows driver signing
 - Microsoft Learn: Serial driver samples
 - Microsoft Learn: `Win32_SerialPort`
+- Microsoft Learn: `BluetoothEnumerateInstalledServices`
+- Microsoft Learn: Bluetooth GATT Client
 - pySerial documentation: `serial.tools.list_ports`
 - Espressif Arduino ESP32 BluetoothSerial
+- Bluetooth SIG: Serial Port Profile
+- Nordic Thingy:52 firmware architecture / Secure DFU Service FE59
 - Espressif ESP-IDF Bluetooth SPP API

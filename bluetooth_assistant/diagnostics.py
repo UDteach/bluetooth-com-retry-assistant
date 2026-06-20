@@ -15,6 +15,7 @@ from .com_candidate import assess_com_candidate
 from .com_ports import list_com_ports
 from .mock_backend import MockBluetoothBackend
 from .models import BluetoothDevice, ComPortInfo, find_matching_ports, normalize_address
+from .profile_candidate import assess_profile_candidate
 from .retry import PairingRetrier, RetryConfig
 from .windows_bluetooth import BluetoothError, UnsupportedPlatformError, WindowsBluetoothBackend
 
@@ -266,15 +267,26 @@ def _candidate_data(
     same_address_count: int = 1,
 ) -> dict[str, Any]:
     assessment = assess_com_candidate(device, ports, same_address_count=same_address_count)
+    profile = assess_profile_candidate(device, ports)
     return {
         "address": device.address,
         "name": device.name,
+        "service_uuids": list(device.service_uuids),
         "label": assessment.label,
         "display_label": assessment.display_label,
         "icon": assessment.icon,
         "score": assessment.score,
         "same_address_count": same_address_count,
         "reasons": assessment.reasons,
+        "profile": {
+            "label": profile.label,
+            "display_label": profile.display_label,
+            "icon": profile.icon,
+            "profile": profile.profile,
+            "score": profile.score,
+            "firmware_candidate": profile.firmware_candidate,
+            "reasons": profile.reasons,
+        },
     }
 
 

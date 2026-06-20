@@ -12,6 +12,7 @@ from bluetooth_assistant.diagnostics import (
 )
 from bluetooth_assistant.mock_backend import MockBluetoothBackend, MockDeviceScenario
 from bluetooth_assistant.models import BluetoothDevice, ComPortInfo
+from bluetooth_assistant.profile_candidate import SPP_SERVICE_UUID
 
 
 class DiagnosticsTests(unittest.TestCase):
@@ -59,7 +60,9 @@ class DiagnosticsTests(unittest.TestCase):
             expect_device_name="BT-COM",
             expect_address="AA:BB:CC:DD:EE:FF",
             expect_com_port="COM7",
-            device_loader=lambda: [BluetoothDevice("AA:BB:CC:DD:EE:FF", name="BT-COM-MOCK")],
+            device_loader=lambda: [
+                BluetoothDevice("AA:BB:CC:DD:EE:FF", name="BT-COM-MOCK", service_uuids=(SPP_SERVICE_UUID,))
+            ],
             port_loader=lambda: [ComPortInfo("COM7", name="COM7", hwid="BTHENUM\\MOCK\\AABBCCDDEEFF")],
         )
         by_name = {result.name: result for result in results}
@@ -72,6 +75,9 @@ class DiagnosticsTests(unittest.TestCase):
         self.assertEqual(by_name["hardware_com_candidates"].data[0]["label"], "COMあり")
         self.assertEqual(by_name["hardware_com_candidates"].data[0]["icon"], "✓")
         self.assertEqual(by_name["hardware_com_candidates"].data[0]["display_label"], "✓ COMあり")
+        self.assertEqual(by_name["hardware_com_candidates"].data[0]["service_uuids"], [SPP_SERVICE_UUID])
+        self.assertEqual(by_name["hardware_com_candidates"].data[0]["profile"]["label"], "SPP/COM")
+        self.assertEqual(by_name["hardware_com_candidates"].data[0]["profile"]["profile"], "SPP/RFCOMM")
 
     def test_hardware_expectations_report_missing_device(self):
         results = run_hardware_expectations(

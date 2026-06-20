@@ -2,6 +2,7 @@ import unittest
 
 from bluetooth_assistant.mock_backend import MockBluetoothBackend, MockDeviceScenario
 from bluetooth_assistant.models import find_matching_ports
+from bluetooth_assistant.profile_candidate import NORDIC_SECURE_DFU_SERVICE_UUID, SPP_SERVICE_UUID
 
 
 class MockBackendTests(unittest.TestCase):
@@ -62,6 +63,15 @@ class MockBackendTests(unittest.TestCase):
         self.assertTrue(names)
         self.assertFalse(any("mock" in name.lower() for name in names))
         self.assertTrue(any("テスト用" in name for name in names))
+
+    def test_default_devices_include_profile_service_hints(self):
+        backend = MockBluetoothBackend()
+
+        devices = backend.list_devices()
+        by_name = {device.name: device for device in devices}
+
+        self.assertIn(SPP_SERVICE_UUID, by_name["テスト用 COM 機器"].service_uuids)
+        self.assertIn(NORDIC_SECURE_DFU_SERVICE_UUID, by_name["テスト用 BLE DFU機器"].service_uuids)
 
 
 if __name__ == "__main__":

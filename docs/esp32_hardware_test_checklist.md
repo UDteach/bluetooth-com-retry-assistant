@@ -152,6 +152,7 @@ py -m bluetooth_assistant
 
 - スキャンで `BT-COM-MOCK-A` / `BT-COM-MOCK-B` / `BT-NO-COM-MOCK` が見える
 - `COM候補` 列が `✓ COMあり` または `▲ COM候補 高` になる
+- `プロファイル候補` 列で、COMが出る機器は `✓ SPP/COM` または `↔ SPP/COM候補` になる
 - `点数` 列でCOMが出そうな候補ほど高く表示される
 - 同じMACが複数行に出た場合、それぞれ別行として表示される
 - `MAC指定` に控えたMACを入れて追加できる

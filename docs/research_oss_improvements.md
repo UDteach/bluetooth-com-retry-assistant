@@ -21,6 +21,8 @@ Microsoft documents the Win32 Bluetooth API surface for `BluetoothAuthenticateDe
 
 For no-PIN SSP devices, the app registers an authentication callback and accepts numeric comparison. This produced Bluetooth COM ports with ESP32 SPP firmware without requiring a PIN entry.
 
+The app also uses `BluetoothEnumerateInstalledServices` as best-effort metadata for paired/remembered devices. When Windows exposes service GUIDs, the GUI can distinguish SPP/COM hints from BLE GATT or DFU/OTA-style firmware update hints. This does not replace full BLE GATT service discovery; it is a safe, dependency-light signal for the device list.
+
 Sources:
 
 - https://learn.microsoft.com/en-us/windows/win32/api/_bluetooth/
@@ -28,6 +30,7 @@ Sources:
 - https://learn.microsoft.com/en-us/windows/win32/api/bluetoothapis/nf-bluetoothapis-bluetoothregisterforauthenticationex
 - https://learn.microsoft.com/en-us/windows/win32/api/bluetoothapis/nf-bluetoothapis-bluetoothsendauthenticationresponseex
 - https://learn.microsoft.com/en-us/windows/win32/api/bluetoothapis/nf-bluetoothapis-bluetoothremovedevice
+- https://learn.microsoft.com/en-us/windows/win32/api/bluetoothapis/nf-bluetoothapis-bluetoothenumerateinstalledservices
 
 ### Keep ESP32 SPP / no-COM hardware test sketches
 
@@ -64,6 +67,16 @@ Windows has WinRT RFCOMM APIs, but this app's user-facing target is Windows-crea
 Source:
 
 - https://learn.microsoft.com/en-us/uwp/api/windows.devices.bluetooth.rfcomm.rfcommdeviceservice
+
+### Full BLE GATT/DFU flashing mode
+
+Windows exposes BLE GATT client APIs, and Nordic documents Secure DFU Service `0xFE59`. A real firmware flashing mode would need device-specific GATT characteristics, package signing/format handling, and failure recovery. The current release only labels likely BLE GATT / DFU candidates so the user does not wait forever for a COM port when the device is not an SPP device.
+
+Sources:
+
+- https://learn.microsoft.com/en-us/windows/apps/develop/devices-sensors/gatt-client
+- https://learn.microsoft.com/en-us/uwp/api/windows.devices.bluetooth.genericattributeprofile.gattdeviceservice
+- https://nordicsemiconductor.github.io/Nordic-Thingy52-FW/documentation/firmware_architecture.html
 
 ### C++ helper process
 

@@ -44,11 +44,13 @@ class BluetoothDevice:
     last_used: str = ""
     raw_count: int = 1
     raw_names: tuple[str, ...] = field(default_factory=tuple)
+    service_uuids: tuple[str, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
         self.address = normalize_address(self.address)
         if not self.raw_names and self.name:
             self.raw_names = (self.name,)
+        self.service_uuids = tuple(dict.fromkeys(uuid.upper() for uuid in self.service_uuids if uuid))
 
     @property
     def status_text(self) -> str:
@@ -96,6 +98,7 @@ def merge_duplicate_devices(devices: Iterable[BluetoothDevice]) -> list[Bluetoot
                 address=address,
                 raw_count=max(1, device.raw_count),
                 raw_names=tuple(dict.fromkeys(device.raw_names or ((device.name,) if device.name else ()))),
+                service_uuids=tuple(dict.fromkeys(device.service_uuids)),
             )
             continue
 
@@ -107,6 +110,7 @@ def merge_duplicate_devices(devices: Iterable[BluetoothDevice]) -> list[Bluetoot
                 ]
             )
         )
+        service_uuids = tuple(dict.fromkeys([*existing.service_uuids, *device.service_uuids]))
         grouped[address] = BluetoothDevice(
             address=address,
             name=existing.name or device.name,
@@ -118,6 +122,7 @@ def merge_duplicate_devices(devices: Iterable[BluetoothDevice]) -> list[Bluetoot
             last_used=existing.last_used or device.last_used,
             raw_count=existing.raw_count + max(1, device.raw_count),
             raw_names=names,
+            service_uuids=service_uuids,
         )
     return sorted(grouped.values(), key=lambda item: (item.name.lower(), item.address))
 

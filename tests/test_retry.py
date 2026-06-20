@@ -139,13 +139,13 @@ class RetryTests(unittest.TestCase):
         backend = MockBluetoothBackend()
 
         outcome = PairingRetrier(backend, sleeper=lambda _seconds: None).run(
-            "33:44:55:66:77:88",
+            "44:55:66:77:88:99",
             RetryConfig(max_attempts=2, com_wait_seconds=0, settle_seconds=0),
         )
 
         self.assertTrue(outcome.success)
-        self.assertEqual(outcome.ports[0].device, "COM23")
-        self.assertEqual(backend.pair_count_for("33:44:55:66:77:88"), 2)
+        self.assertEqual(outcome.ports[0].device, "COM24")
+        self.assertEqual(backend.pair_count_for("44:55:66:77:88:99"), 2)
 
     def test_mock_target_com_port_can_be_configured(self):
         backend = MockBluetoothBackend(target_com_port="COM98", appear_after_pair_count=1)

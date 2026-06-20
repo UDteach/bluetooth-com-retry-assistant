@@ -13,6 +13,7 @@ from tkinter import messagebox, ttk
 from .com_candidate import assess_com_candidate
 from .mock_backend import MockBluetoothBackend
 from .models import BluetoothDevice, ComPortInfo, find_matching_ports, normalize_address
+from .profile_candidate import assess_profile_candidate
 from .retry import BluetoothBackend, PairingRetrier, RetryConfig, RetryEvent
 from .windows_bluetooth import BluetoothError, UnsupportedPlatformError, WindowsBluetoothBackend
 
@@ -76,6 +77,7 @@ def build_device_display_rows(
                 ports,
                 same_address_count=row.same_address_count,
             ).score,
+            -assess_profile_candidate(row.device, ports).score,
             row.device.address,
             row.device.name.lower(),
             row.row_id,
@@ -136,8 +138,8 @@ class BluetoothAssistantApp(tk.Tk):
         super().__init__()
         self._mock_mode = mock_mode
         self.title(window_title_for_mode(mock_mode))
-        self.geometry("1040x680")
-        self.minsize(900, 560)
+        self.geometry("1180x700")
+        self.minsize(980, 580)
 
         self._queue: queue.Queue[tuple[str, object]] = queue.Queue()
         self._stop_event = threading.Event()
@@ -308,13 +310,25 @@ class BluetoothAssistantApp(tk.Tk):
         device_frame.rowconfigure(0, weight=1)
         main.add(device_frame, weight=3)
 
-        columns = ("checked", "name", "address", "candidate", "score", "status", "com", "class", "last_seen")
+        columns = (
+            "checked",
+            "name",
+            "address",
+            "candidate",
+            "profile",
+            "score",
+            "status",
+            "com",
+            "class",
+            "last_seen",
+        )
         self.tree = ttk.Treeview(device_frame, columns=columns, show="headings", selectmode="browse")
         headings = {
             "checked": "選択",
             "name": "名前",
             "address": "MAC",
             "candidate": "COM候補",
+            "profile": "プロファイル候補",
             "score": "点数",
             "status": "状態",
             "com": "COM",
@@ -326,6 +340,7 @@ class BluetoothAssistantApp(tk.Tk):
             "name": 240,
             "address": 150,
             "candidate": 130,
+            "profile": 150,
             "score": 60,
             "status": 180,
             "com": 120,
@@ -351,6 +366,7 @@ class BluetoothAssistantApp(tk.Tk):
         self.detail_var = tk.StringVar(
             value="同じMACアドレスが複数見える場合も、候補ごとに行を分けて表示します。"
             "COM候補の点数が高い行から選ぶと成功しやすいです。"
+            "プロファイル候補でSPP/COMか、FW/DFU系かの目安も見られます。"
             "選択列をクリックすると、複数台を順番に処理できます。"
         )
         ttk.Label(lower, textvariable=self.detail_var, anchor=tk.W).grid(row=0, column=0, sticky="ew", pady=(8, 4))
@@ -574,10 +590,15 @@ class BluetoothAssistantApp(tk.Tk):
             if self.tree.exists(row_id):
                 self.tree.item(row_id, values=self._row_values(row_id, device))
 
-    def _row_values(self, row_id: str, device: BluetoothDevice) -> tuple[str, str, str, str, str, str, str, str, str]:
+    def _row_values(
+        self,
+        row_id: str,
+        device: BluetoothDevice,
+    ) -> tuple[str, str, str, str, str, str, str, str, str, str]:
         matched_ports = find_matching_ports(device.address, self._ports)
         same_address_count = self._same_address_count_by_row.get(row_id, 1)
         assessment = assess_com_candidate(device, self._ports, same_address_count=same_address_count)
+        profile = assess_profile_candidate(device, self._ports)
         run_status = self._run_status_by_address.get(device.address, "")
         status_text = device.status_text if not run_status else f"{run_status} / {device.status_text}"
         return (
@@ -585,6 +606,7 @@ class BluetoothAssistantApp(tk.Tk):
             device.name or "(名前なし)",
             device.address,
             assessment.display_label,
+            profile.display_label,
             str(assessment.score),
             status_text,
             ", ".join(port.device for port in matched_ports),
@@ -695,6 +717,7 @@ class BluetoothAssistantApp(tk.Tk):
             self.detail_var.set(
                 "同じMACアドレスが複数見える場合も、候補ごとに行を分けて表示します。"
                 "COM候補の点数が高い行から選ぶと成功しやすいです。"
+                "プロファイル候補でSPP/COMか、FW/DFU系かの目安も見られます。"
                 "選択列をクリックすると、複数台を順番に処理できます。"
             )
             return
@@ -704,12 +727,16 @@ class BluetoothAssistantApp(tk.Tk):
         port_text = ", ".join(port.device for port in ports) if ports else "未検出"
         checked_count = len(self._checked_rows)
         assessment = assess_com_candidate(selected, self._ports, same_address_count=same_address_count)
-        reason_text = " / ".join(assessment.reasons)
+        profile = assess_profile_candidate(selected, self._ports)
+        com_reason_text = " / ".join(assessment.reasons)
+        profile_reason_text = " / ".join(profile.reasons)
         self.detail_var.set(
-            f"{assessment.display_label} {assessment.score}点 / {selected.address} / "
+            f"{assessment.display_label} {assessment.score}点 / {profile.display_label} {profile.score}点 / "
+            f"{selected.address} / "
             f"{selected.name or '(名前なし)'} / {selected.status_text} / "
             f"同じMACの候補: {same_address_count}行 / COM: {port_text} / "
-            f"理由: {reason_text} / チェック中: {checked_count}行"
+            f"COM理由: {com_reason_text} / プロファイル理由: {profile_reason_text} / "
+            f"チェック中: {checked_count}行"
         )
 
     def _set_busy(self, busy: bool, *, retrying: bool = False) -> None:

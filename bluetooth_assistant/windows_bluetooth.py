@@ -13,6 +13,7 @@ ERROR_SUCCESS = 0
 ERROR_NO_MORE_ITEMS = 259
 ERROR_NOT_FOUND = 1168
 ERROR_SERVICE_DOES_NOT_EXIST = 1060
+ERROR_MORE_DATA = 234
 E_INVALIDARG = 0x80070057
 BLUETOOTH_SERVICE_ENABLE = 0x00000001
 BLUETOOTH_MITM_PROTECTION_NOT_REQUIRED = 0
@@ -222,7 +223,7 @@ class _BluetoothApi:
         devices: list[BluetoothDevice] = []
         try:
             while True:
-                devices.append(_model_from_info(info))
+                devices.append(_model_from_info(info, service_uuids=self._installed_service_uuids(info)))
                 info = _device_info()
                 if not self._bth.BluetoothFindNextDevice(handle, ctypes.byref(info)):
                     error = ctypes.get_last_error()
@@ -394,6 +395,45 @@ class _BluetoothApi:
             self._bth.BluetoothFindRadioClose(find_handle)
         return handles
 
+    def _installed_service_uuids(
+        self,
+        info: BLUETOOTH_DEVICE_INFO,
+    ) -> tuple[str, ...]:
+        if not (info.fRemembered or info.fAuthenticated or info.fConnected):
+            return ()
+
+        service_count = wintypes.DWORD(0)
+        code = self._bth.BluetoothEnumerateInstalledServices(
+            None,
+            ctypes.byref(info),
+            ctypes.byref(service_count),
+            None,
+        )
+        if code not in (ERROR_SUCCESS, ERROR_MORE_DATA) or service_count.value == 0:
+            return ()
+
+        service_uuids: tuple[str, ...] = ()
+        for _attempt in range(3):
+            requested_count = max(1, service_count.value)
+            services = (GUID * requested_count)()
+            returned_count = wintypes.DWORD(requested_count)
+            code = self._bth.BluetoothEnumerateInstalledServices(
+                None,
+                ctypes.byref(info),
+                ctypes.byref(returned_count),
+                services,
+            )
+            valid_count = min(returned_count.value, requested_count)
+            service_uuids = tuple(
+                dict.fromkeys(_guid_to_string(services[index]) for index in range(valid_count))
+            )
+            if code == ERROR_SUCCESS:
+                return service_uuids
+            if code != ERROR_MORE_DATA or returned_count.value <= requested_count:
+                return service_uuids
+            service_count = returned_count
+        return service_uuids
+
     def _configure_functions(self) -> None:
         self._bth.BluetoothFindFirstDevice.argtypes = [
             ctypes.POINTER(BLUETOOTH_DEVICE_SEARCH_PARAMS),
@@ -455,6 +495,13 @@ class _BluetoothApi:
             wintypes.DWORD,
         ]
         self._bth.BluetoothSetServiceState.restype = wintypes.DWORD
+        self._bth.BluetoothEnumerateInstalledServices.argtypes = [
+            wintypes.HANDLE,
+            ctypes.POINTER(BLUETOOTH_DEVICE_INFO),
+            ctypes.POINTER(wintypes.DWORD),
+            ctypes.POINTER(GUID),
+        ]
+        self._bth.BluetoothEnumerateInstalledServices.restype = wintypes.DWORD
         self._kernel32.GetConsoleWindow.argtypes = []
         self._kernel32.GetConsoleWindow.restype = wintypes.HWND
         self._kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
@@ -485,7 +532,11 @@ def _format_address(address: BLUETOOTH_ADDRESS) -> str:
     return ":".join(f"{(value >> shift) & 0xFF:02X}" for shift in range(40, -1, -8))
 
 
-def _model_from_info(info: BLUETOOTH_DEVICE_INFO) -> BluetoothDevice:
+def _model_from_info(
+    info: BLUETOOTH_DEVICE_INFO,
+    *,
+    service_uuids: tuple[str, ...] = (),
+) -> BluetoothDevice:
     return BluetoothDevice(
         address=_format_address(info.Address),
         name=str(info.szName).rstrip("\x00"),
@@ -495,6 +546,16 @@ def _model_from_info(info: BLUETOOTH_DEVICE_INFO) -> BluetoothDevice:
         authenticated=bool(info.fAuthenticated),
         last_seen=_system_time_text(info.stLastSeen),
         last_used=_system_time_text(info.stLastUsed),
+        service_uuids=service_uuids,
+    )
+
+
+def _guid_to_string(guid: GUID) -> str:
+    data4 = list(guid.Data4)
+    return (
+        f"{guid.Data1:08X}-{guid.Data2:04X}-{guid.Data3:04X}-"
+        f"{data4[0]:02X}{data4[1]:02X}-"
+        f"{''.join(f'{value:02X}' for value in data4[2:])}"
     )
 
 

@@ -4,6 +4,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from .models import BluetoothDevice, ComPortInfo, OperationResult, normalize_address
+from .profile_candidate import NORDIC_SECURE_DFU_SERVICE_UUID, SPP_SERVICE_UUID
 
 
 @dataclass(slots=True)
@@ -19,6 +20,7 @@ class MockDeviceScenario:
     )
     remembered: bool = True
     class_of_device: int = 0x001F00
+    service_uuids: tuple[str, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
         self.address = normalize_address(self.address)
@@ -95,6 +97,7 @@ class MockBluetoothBackend:
                     remembered=scenario.remembered or paired,
                     authenticated=paired,
                     last_seen=f"テストスキャン {self.scan_count}",
+                    service_uuids=scenario.service_uuids,
                 )
             )
             if scenario.duplicate_devices:
@@ -105,6 +108,7 @@ class MockBluetoothBackend:
                         class_of_device=scenario.class_of_device,
                         remembered=True,
                         last_seen=f"テスト重複 {self.scan_count}",
+                        service_uuids=scenario.service_uuids,
                     )
                 )
         return sorted(devices, key=lambda item: (item.address, item.name.lower(), item.last_seen))
@@ -168,6 +172,7 @@ class MockBluetoothBackend:
             com_port=f"COM{com_number}",
             appear_after_pair_count=2,
             duplicate_devices=False,
+            service_uuids=(SPP_SERVICE_UUID,),
         )
         self._scenarios[scenario.address] = scenario
         return scenario
@@ -190,6 +195,7 @@ class MockBluetoothBackend:
                 fail_pair_attempts=fail_pair_attempts,
                 duplicate_devices=duplicate_devices,
                 service_result=service_result,
+                service_uuids=(SPP_SERVICE_UUID,),
             ),
             MockDeviceScenario(
                 "11:22:33:44:55:66",
@@ -197,12 +203,21 @@ class MockBluetoothBackend:
                 com_port="COM13",
                 appear_after_pair_count=3,
                 duplicate_devices=True,
+                service_uuids=(SPP_SERVICE_UUID,),
             ),
             MockDeviceScenario(
                 "22:33:44:55:66:77",
                 name="テスト用 COMなし機器",
                 com_port="",
                 appear_after_pair_count=None,
+            ),
+            MockDeviceScenario(
+                "33:44:55:66:77:88",
+                name="テスト用 BLE DFU機器",
+                com_port="",
+                appear_after_pair_count=None,
+                duplicate_devices=False,
+                service_uuids=(NORDIC_SECURE_DFU_SERVICE_UUID,),
             ),
         ]
 
