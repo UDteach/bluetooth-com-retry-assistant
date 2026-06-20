@@ -6,9 +6,28 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Enable-ModernTls {
+    if ($PSVersionTable.PSEdition -eq "Desktop") {
+        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+    }
+}
+
 function Join-NormalizedPath([string]$Base, [string]$Child) {
     return [System.IO.Path]::GetFullPath((Join-Path $Base $Child))
 }
+
+function Save-Url([string]$Url, [string]$Path) {
+    $client = New-Object System.Net.WebClient
+    try {
+        $client.Headers["User-Agent"] = "BluetoothAssistant-setup"
+        $client.DownloadFile($Url, $Path)
+    }
+    finally {
+        $client.Dispose()
+    }
+}
+
+Enable-ModernTls
 
 $installRootFull = [System.IO.Path]::GetFullPath($InstallRoot)
 $binDirectory = Join-NormalizedPath $installRootFull "bin"
@@ -37,8 +56,8 @@ $zipPath = Join-NormalizedPath $downloadDirectory $asset.name
 $checksumPath = Join-NormalizedPath $downloadDirectory $checksums.name
 
 Write-Host "Downloading Arduino CLI $($release.tag_name)..."
-Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zipPath
-Invoke-WebRequest -Uri $checksums.browser_download_url -OutFile $checksumPath
+Save-Url $asset.browser_download_url $zipPath
+Save-Url $checksums.browser_download_url $checksumPath
 
 $expectedLine = Get-Content $checksumPath | Where-Object { $_ -match [regex]::Escape($asset.name) } | Select-Object -First 1
 if (-not $expectedLine) {

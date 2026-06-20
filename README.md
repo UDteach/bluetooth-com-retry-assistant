@@ -55,6 +55,7 @@ Windows 側にも見える形で再現したい場合は、次のどちらかを
 - `docs/windows_visible_mock.md`: ESP32 を Classic Bluetooth SPP 機器として動かし、Windows の Bluetooth 一覧、ペアリング、COM ポート生成を再現します。
 - `docs/esp32_hardware_test_checklist.md`: ESP32 到着後に実行する順番、成功条件、失敗時の確認点です。
 - `docs/esp32_validation_2026-06-20.md`: 3台のESP32で実測したPINなしペアリング、COM出現、COMなしパターンの結果です。
+- `docs/esp32_validation_2026-06-20_upload.md`: Arduino CLIで3台へ書き込み、SPP/NO-COM/DFU風/BLE風を実測した結果です。
 - `docs/research_oss_improvements.md`: OSS/一次情報を調べた結果と、採用/不採用の理由です。
 
 ESP32 実機では `BT-COM-MOCK` で COM が出るパターン、`BT-NO-COM-MOCK` で COM が出ないパターンを分けて確認できます。
@@ -86,6 +87,7 @@ py -m bluetooth_assistant.diagnostics --json --mock-retry
 py -m bluetooth_assistant.diagnostics --json --mock-retry --mock-com-port COM98
 .\scripts\setup_esp32_arduino_cli.ps1
 .\scripts\compile_esp32_sketches.ps1
+.\scripts\upload_esp32_sketches.ps1
 py -m bluetooth_assistant.diagnostics --json --esp32-check --wait-seconds 90
 ```
 

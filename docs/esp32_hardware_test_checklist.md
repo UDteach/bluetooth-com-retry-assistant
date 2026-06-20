@@ -30,6 +30,13 @@ Arduino CLIで全ESP32スケッチを先にビルド確認する場合:
 .\scripts\compile_esp32_sketches.ps1
 ```
 
+3台を接続している場合、次のコマンドで `COM3=BT-COM-MOCK-A`,
+`COM4=BT-COM-MOCK-B`, `COM5=BT-NO-COM-MOCK` として書き込みます。
+
+```powershell
+.\scripts\upload_esp32_sketches.ps1
+```
+
 PlatformIOやArduino CLIでビルドする場合、日本語を含むパスでESP32ツールチェーンが失敗することがあります。その場合は `C:\ba_esp32\...` のような英数字だけの一時フォルダへスケッチを置いてビルドしてください。
 
 ## 2. Windows の Bluetooth 一覧で見えるか確認する

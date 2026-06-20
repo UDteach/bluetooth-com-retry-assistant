@@ -16,12 +16,15 @@ class HardwareSketchTests(unittest.TestCase):
 
         self.assertIn("BluetoothSerial", sketch)
         self.assertIn("CONFIG_BT_SPP_ENABLED", sketch)
+        self.assertIn("BT_DEVICE_NAME", sketch)
         self.assertIn("BT-COM-MOCK", sketch)
 
     def test_no_com_mock_does_not_start_spp(self):
         sketch = read_sketch("hardware/esp32_no_com_mock/esp32_no_com_mock.ino")
 
         self.assertIn("BT-NO-COM-MOCK", sketch)
+        self.assertIn("esp32-hal-alloc-bt-classic-mem.h", sketch)
+        self.assertIn("BT_MODE_CLASSIC_BT", sketch)
         self.assertNotIn("BluetoothSerial", sketch)
         self.assertNotIn(SPP_SERVICE_UUID, sketch)
 
@@ -29,6 +32,8 @@ class HardwareSketchTests(unittest.TestCase):
         sketch = read_sketch("hardware/esp32_classic_dfu_hint_mock/esp32_classic_dfu_hint_mock.ino")
 
         self.assertIn("BT-DFU-NO-COM-MOCK", sketch)
+        self.assertIn("esp32-hal-alloc-bt-classic-mem.h", sketch)
+        self.assertIn("BT_MODE_CLASSIC_BT", sketch)
         self.assertIn("esp_bt_gap_set_scan_mode", sketch)
         self.assertNotIn("BluetoothSerial", sketch)
         self.assertNotIn(SPP_SERVICE_UUID, sketch)

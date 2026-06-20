@@ -41,6 +41,7 @@ characters. Use an ASCII-only install and work directory:
 ```powershell
 .\scripts\setup_esp32_arduino_cli.ps1
 .\scripts\compile_esp32_sketches.ps1
+.\scripts\upload_esp32_sketches.ps1
 ```
 
 Current verified local setup:
@@ -50,11 +51,15 @@ Current verified local setup:
 - CLI/config root: `C:\ba_arduino`
 - temporary compile root: `C:\ba_esp32_compile`
 - board target: `esp32:esp32:esp32`
+- upload root: `C:\ba_esp32_upload`
+- PowerShell verified on this PC: Windows PowerShell `5.1.26100.8655`
 
 The setup script downloads Arduino CLI from the official GitHub release,
 verifies the published SHA-256 checksum, configures Espressif's board manager
 URL, and installs the ESP32 core. The compile script copies sketches to an
 ASCII-only temporary folder before invoking `arduino-cli compile`.
+The upload script uses the same ASCII-only approach and defaults to
+`COM3=BT-COM-MOCK-A`, `COM4=BT-COM-MOCK-B`, and `COM5=BT-NO-COM-MOCK`.
 
 ## Expected BluetoothAssistant Behavior
 

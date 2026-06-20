@@ -7,6 +7,7 @@
 #include "esp_bt_device.h"
 #include "esp_bt_main.h"
 #include "esp_gap_bt_api.h"
+#include "esp32-hal-alloc-bt-classic-mem.h"
 #include "esp32-hal-bt.h"
 
 #if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
@@ -21,7 +22,7 @@ void gapCallback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param) {
 }
 
 void setupClassicBluetoothWithoutSpp() {
-  if (!btStarted() && !btStart()) {
+  if (!btStarted() && !btStartMode(BT_MODE_CLASSIC_BT)) {
     Serial.println("Bluetooth controller start failed");
     return;
   }

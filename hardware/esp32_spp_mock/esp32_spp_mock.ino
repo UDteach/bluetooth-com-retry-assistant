@@ -15,7 +15,11 @@
 
 BluetoothSerial SerialBT;
 
-const char *DEVICE_NAME = "BT-COM-MOCK";
+#ifndef BT_DEVICE_NAME
+#define BT_DEVICE_NAME "BT-COM-MOCK"
+#endif
+
+const char *DEVICE_NAME = BT_DEVICE_NAME;
 
 void setup() {
   Serial.begin(115200);

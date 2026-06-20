@@ -28,6 +28,7 @@ if (-not (Test-Path $Python)) {
     $Python = (Resolve-Path $Python).Path
 }
 
+New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 $OutputDirectory = (Resolve-Path $OutputDirectory).Path
 $targets = @()
 foreach ($target in $ComTargets) {
