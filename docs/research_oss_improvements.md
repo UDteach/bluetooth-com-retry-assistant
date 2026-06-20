@@ -17,11 +17,16 @@ Sources:
 
 ### Keep Win32 Bluetooth APIs for pairing/unpair/SPP enablement
 
-Microsoft documents the Win32 Bluetooth API surface for `BluetoothAuthenticateDeviceEx`, `BluetoothRemoveDevice`, and `BluetoothSetServiceState`. The current implementation already uses these APIs, which keeps the app dependency-light and avoids less-maintained wrappers.
+Microsoft documents the Win32 Bluetooth API surface for `BluetoothAuthenticateDeviceEx`, `BluetoothRegisterForAuthenticationEx`, `BluetoothSendAuthenticationResponseEx`, `BluetoothRemoveDevice`, and `BluetoothSetServiceState`. The current implementation uses these APIs directly from Python via `ctypes`, which keeps the app dependency-light and avoids less-maintained wrappers.
+
+For no-PIN SSP devices, the app registers an authentication callback and accepts numeric comparison. This produced Bluetooth COM ports with ESP32 SPP firmware without requiring a PIN entry.
 
 Sources:
 
 - https://learn.microsoft.com/en-us/windows/win32/api/_bluetooth/
+- https://learn.microsoft.com/en-us/windows/win32/api/bluetoothapis/nf-bluetoothapis-bluetoothauthenticatedeviceex
+- https://learn.microsoft.com/en-us/windows/win32/api/bluetoothapis/nf-bluetoothapis-bluetoothregisterforauthenticationex
+- https://learn.microsoft.com/en-us/windows/win32/api/bluetoothapis/nf-bluetoothapis-bluetoothsendauthenticationresponseex
 - https://learn.microsoft.com/en-us/windows/win32/api/bluetoothapis/nf-bluetoothapis-bluetoothremovedevice
 
 ### Keep ESP32 SPP / no-COM hardware test sketches
@@ -59,3 +64,7 @@ Windows has WinRT RFCOMM APIs, but this app's user-facing target is Windows-crea
 Source:
 
 - https://learn.microsoft.com/en-us/uwp/api/windows.devices.bluetooth.rfcomm.rfcommdeviceservice
+
+### C++ helper process
+
+C++ can call the same Win32 Bluetooth APIs more naturally, but the current Python `ctypes` implementation already reaches the authentication callback path and passed ESP32 hardware validation. A C++ helper would add build and release complexity without changing Windows user-consent or SPP requirements, so it is not needed for the current release.

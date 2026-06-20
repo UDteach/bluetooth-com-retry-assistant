@@ -141,7 +141,9 @@ class BluetoothAssistantApp(tk.Tk):
             self.retry_button,
             "チェックした機器を上から順番に処理します。\n\n"
             "各機器ごとに「解除 -> ペアリング -> COM待ち」を繰り返し、"
-            "COMポートが見つかったら次の機器へ進みます。",
+            "COMポートが見つかったら次の機器へ進みます。\n\n"
+            "PIN不要の機器では、Windowsからの確認要求にアプリが自動で応答します。"
+            "右下に「デバイスの追加」が出る場合は、Windows側の許可確認です。",
         )
 
         self.check_all_button = ttk.Button(toolbar, text="全選択", command=self._check_all_visible)
@@ -171,13 +173,14 @@ class BluetoothAssistantApp(tk.Tk):
             padx=(12, 0),
         )
 
-        max_attempts_label = ttk.Label(toolbar, text="最大試行回数")
+        max_attempts_label = ttk.Label(toolbar, text="1台あたり最大試行回数")
         max_attempts_label.grid(row=1, column=0, padx=(0, 4), pady=(8, 0))
         self.max_attempts = tk.IntVar(value=5)
         max_attempts_box = ttk.Spinbox(toolbar, from_=1, to=50, width=6, textvariable=self.max_attempts)
         max_attempts_box.grid(row=1, column=1, pady=(8, 0))
         max_attempts_help = (
             "1台の機器に対して、解除 -> ペアリング -> COM待ちを最大何回まで繰り返すかです。"
+            "COMが出ない機器でも、この回数で必ず止まります。"
         )
         Tooltip(max_attempts_label, max_attempts_help)
         Tooltip(max_attempts_box, max_attempts_help)

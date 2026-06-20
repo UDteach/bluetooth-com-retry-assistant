@@ -4,6 +4,9 @@ from unittest.mock import patch
 
 import bluetooth_assistant.windows_bluetooth as windows_bluetooth
 from bluetooth_assistant.windows_bluetooth import (
+    BLUETOOTH_AUTHENTICATE_RESPONSE,
+    BLUETOOTH_AUTHENTICATION_CALLBACK_PARAMS,
+    BLUETOOTH_AUTHENTICATION_METHOD_NUMERIC_COMPARISON,
     BLUETOOTH_DEVICE_INFO,
     BLUETOOTH_MAX_PASSKEY_SIZE,
     ERROR_SUCCESS,
@@ -45,29 +48,60 @@ class WindowsBluetoothStructTests(unittest.TestCase):
 
 
 class FakeWinFunction:
-    def __init__(self, result=ERROR_SUCCESS):
+    def __init__(self, result=ERROR_SUCCESS, handler=None):
         self.result = result
+        self.handler = handler
         self.calls = []
         self.argtypes = None
         self.restype = None
 
     def __call__(self, *args):
         self.calls.append(args)
+        if self.handler:
+            return self.handler(*args)
         return self.result
 
 
 class FakeBluetoothDll:
-    def __init__(self):
+    def __init__(self, *, callback_method=None):
+        self.callback_method = callback_method
+        self.auth_callback = None
+        self.auth_callback_param = None
+        self.auth_responses = []
         self.BluetoothFindFirstDevice = FakeWinFunction()
         self.BluetoothFindNextDevice = FakeWinFunction()
         self.BluetoothFindDeviceClose = FakeWinFunction()
-        self.BluetoothAuthenticateDeviceEx = FakeWinFunction()
+        self.BluetoothAuthenticateDeviceEx = FakeWinFunction(handler=self._authenticate_device_ex)
         self.BluetoothAuthenticateDevice = FakeWinFunction()
+        self.BluetoothRegisterForAuthenticationEx = FakeWinFunction(handler=self._register_authentication_ex)
+        self.BluetoothUnregisterAuthentication = FakeWinFunction()
+        self.BluetoothSendAuthenticationResponseEx = FakeWinFunction(
+            handler=self._send_authentication_response_ex
+        )
         self.BluetoothRemoveDevice = FakeWinFunction()
         self.BluetoothFindFirstRadio = FakeWinFunction()
         self.BluetoothFindNextRadio = FakeWinFunction()
         self.BluetoothFindRadioClose = FakeWinFunction()
         self.BluetoothSetServiceState = FakeWinFunction()
+
+    def _register_authentication_ex(self, _info, registration, callback, callback_param):
+        registration._obj.value = 1
+        self.auth_callback = callback
+        self.auth_callback_param = callback_param
+        return ERROR_SUCCESS
+
+    def _authenticate_device_ex(self, _hwnd, _radio, info, _oob, _requirements):
+        if self.callback_method is not None and self.auth_callback:
+            params = BLUETOOTH_AUTHENTICATION_CALLBACK_PARAMS()
+            params.deviceInfo = info._obj
+            params.authenticationMethod = self.callback_method
+            params.Numeric_Value = 123456
+            self.auth_callback(self.auth_callback_param, ctypes.byref(params))
+        return ERROR_SUCCESS
+
+    def _send_authentication_response_ex(self, _radio, response):
+        self.auth_responses.append(response._obj)
+        return ERROR_SUCCESS
 
 
 class FakeKernel32Dll:
@@ -96,6 +130,8 @@ class WindowsBluetoothApiTests(unittest.TestCase):
         self.assertTrue(result.ok)
         hwnd = fake_bth.BluetoothAuthenticateDeviceEx.calls[0][0]
         self.assertEqual(hwnd.value, 12345)
+        self.assertEqual(len(fake_bth.BluetoothRegisterForAuthenticationEx.calls), 1)
+        self.assertEqual(len(fake_bth.BluetoothUnregisterAuthentication.calls), 1)
 
     def test_pair_uses_console_window_when_parent_is_not_supplied(self):
         fake_bth = FakeBluetoothDll()
@@ -116,3 +152,28 @@ class WindowsBluetoothApiTests(unittest.TestCase):
         self.assertTrue(result.ok)
         hwnd = fake_bth.BluetoothAuthenticateDeviceEx.calls[0][0]
         self.assertEqual(hwnd.value, 6789)
+
+    def test_pair_accepts_numeric_comparison_callback(self):
+        fake_bth = FakeBluetoothDll(callback_method=BLUETOOTH_AUTHENTICATION_METHOD_NUMERIC_COMPARISON)
+        fake_kernel32 = FakeKernel32Dll()
+
+        def fake_windll(name, **_kwargs):
+            if name == "bthprops.cpl":
+                return fake_bth
+            if name == "kernel32":
+                return fake_kernel32
+            raise AssertionError(name)
+
+        with patch.object(windows_bluetooth.ctypes, "WinDLL", side_effect=fake_windll, create=True):
+            api = _BluetoothApi(parent_hwnd=12345)
+
+        result = api.pair("AA:BB:CC:DD:EE:FF")
+
+        self.assertTrue(result.ok)
+        self.assertIn("numeric comparison accepted", result.message)
+        self.assertEqual(len(fake_bth.auth_responses), 1)
+        response = fake_bth.auth_responses[0]
+        self.assertIsInstance(response, BLUETOOTH_AUTHENTICATE_RESPONSE)
+        self.assertEqual(response.authMethod, BLUETOOTH_AUTHENTICATION_METHOD_NUMERIC_COMPARISON)
+        self.assertEqual(response.numericCompInfo.NumericValue, 123456)
+        self.assertEqual(response.negativeResponse, 0)

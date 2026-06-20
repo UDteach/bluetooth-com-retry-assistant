@@ -55,7 +55,10 @@ Write-Host "Running ESP32 pairing test. This changes Windows Bluetooth pairing s
 if ($TargetAddress) { Write-Host "TargetAddress: $TargetAddress" }
 if ($TargetName) { Write-Host "TargetName: $TargetName" }
 if ($PairPin) { Write-Host "PairPin: <provided>" }
-if (-not $PairPin) { Write-Host "PairPin: not used. Approve any Windows pairing prompt if it appears." }
+if (-not $PairPin) {
+    Write-Host "PairPin: not used. SSP numeric comparison is auto-accepted when Windows provides an auth callback."
+    Write-Host "If a Windows 'Add a device' notification appears, it is OS consent rather than a PIN prompt."
+}
 
 $output = & $Python @argsList
 $exitCode = $LASTEXITCODE
@@ -67,8 +70,8 @@ if ($exitCode -ne 0) {
     Write-Host "Pairing test failed. Common fixes:"
     Write-Host "- Confirm the ESP32 SPP sketch is running as BT-COM-MOCK."
     Write-Host "- If multiple devices match the name, re-run with -TargetAddress."
-    Write-Host "- Watch for Windows pairing prompts and approve them."
-    Write-Host "- Error 1244 usually means Windows required user authentication; pair from the app or Windows Settings while watching COM changes."
+    Write-Host "- Error 1244 usually means Windows required user authentication or blocked the callback path."
+    Write-Host "- If Windows shows an 'Add a device' notification, approve it or pair from Windows Settings while watching COM changes."
     Write-Host "- Use -PairPin only for legacy devices that explicitly require a PIN."
     Write-Host "- Remove stale BT-COM-MOCK pairing from Windows settings and retry."
     Write-Host "- If no COM appears, verify this is ESP32-WROOM/DevKitC, not S3/C3/C6/S2."

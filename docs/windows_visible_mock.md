@@ -19,11 +19,12 @@ Windows の Bluetooth 一覧、ペアリング、COM ポート作成まで再現
 手順:
 
 1. `hardware/esp32_spp_mock/esp32_spp_mock.ino` を ESP32 に書き込みます。
-2. Windows の Bluetooth 設定で `BT-COM-MOCK` を探してペアリングします。
+2. BluetoothAssistant でスキャンし、表示された MAC をチェックして接続処理を実行します。
 3. Bluetooth の詳細設定、またはデバイスマネージャーで COM ポートが作られることを確認します。
-4. BluetoothAssistant でスキャンし、表示された MAC をチェックして接続処理を実行します。
 
-SPP mock は固定PINを設定していません。実機で使う予定の「PINや専用コードが不要な機器」に近い条件で、Windows 側の通常ペアリング確認を使います。
+SPP mock は固定PINを設定していません。実機で使う予定の「PINや専用コードが不要な機器」に近い条件で、BluetoothAssistant が Windows の認証コールバックに自動応答します。ログに `numeric comparison accepted` が出れば、PIN入力なしで進んでいます。
+
+Windows の Bluetooth 設定から手動でペアリングしても確認できます。右下に「デバイスの追加」通知が出た場合は、PIN要求ではなく Windows 側の同意確認です。
 
 この方法は実Bluetooth機器なので、Windows 側のペアリング済みデバイスにも表示されます。アプリの `--mock` とは違い、Windows の状態やペアリング UI の影響を受けます。
 
@@ -36,7 +37,7 @@ COMが出ないパターンを明示的に作る場合は、`hardware/esp32_no_c
 - Bluetooth名: `BT-NO-COM-MOCK`
 - Classic Bluetoothとして発見可能
 - Serial Port Profile は開始しない
-- WindowsにCOMポートが増えないことを `scripts/watch_com_delta.ps1 -ExpectNoNew` で確認する
+- WindowsにCOMポートが増えないことを `scripts/watch_com_delta.ps1 -ExpectNoNew` または `scripts/run_esp32_pairing_test.ps1 -TargetName BT-NO-COM-MOCK` で確認する
 
 このパターンは「Bluetooth一覧には見えるがCOMが出ない機器」を再現するためのものです。
 

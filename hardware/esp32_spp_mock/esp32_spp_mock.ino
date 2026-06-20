@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include "BluetoothSerial.h"
+#include "esp_gap_bt_api.h"
 
 #if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
 #error Bluetooth is not enabled.
@@ -18,12 +19,16 @@ const char *DEVICE_NAME = "BT-COM-MOCK";
 
 void setup() {
   Serial.begin(115200);
+  SerialBT.enableSSP();
   SerialBT.begin(DEVICE_NAME);
+  esp_bt_io_cap_t ioCapability = ESP_BT_IO_CAP_NONE;
+  esp_bt_gap_set_security_param(ESP_BT_SP_IOCAP_MODE, &ioCapability, sizeof(ioCapability));
 
   Serial.println();
   Serial.print("Bluetooth SPP mock started as ");
   Serial.println(DEVICE_NAME);
-  Serial.println("Pair this device from Windows Bluetooth settings.");
+  Serial.println("SSP no-PIN mode is enabled.");
+  Serial.println("Pair this device from Windows Bluetooth settings or BluetoothAssistant.");
 }
 
 void loop() {

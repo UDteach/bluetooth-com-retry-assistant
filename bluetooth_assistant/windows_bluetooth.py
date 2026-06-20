@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ctypes
 import os
+import threading
 from ctypes import wintypes
 
 from .com_ports import list_com_ports
@@ -16,6 +17,11 @@ E_INVALIDARG = 0x80070057
 BLUETOOTH_SERVICE_ENABLE = 0x00000001
 BLUETOOTH_MITM_PROTECTION_NOT_REQUIRED = 0
 BLUETOOTH_MAX_PASSKEY_SIZE = 16
+BLUETOOTH_AUTHENTICATION_METHOD_LEGACY = 0x1
+BLUETOOTH_AUTHENTICATION_METHOD_OOB = 0x2
+BLUETOOTH_AUTHENTICATION_METHOD_NUMERIC_COMPARISON = 0x3
+BLUETOOTH_AUTHENTICATION_METHOD_PASSKEY_NOTIFICATION = 0x4
+BLUETOOTH_AUTHENTICATION_METHOD_PASSKEY = 0x5
 
 
 class BluetoothError(RuntimeError):
@@ -79,6 +85,73 @@ class BLUETOOTH_DEVICE_SEARCH_PARAMS(ctypes.Structure):
 
 class BLUETOOTH_FIND_RADIO_PARAMS(ctypes.Structure):
     _fields_ = [("dwSize", wintypes.DWORD)]
+
+
+class BLUETOOTH_AUTHENTICATION_CALLBACK_VALUE(ctypes.Union):
+    _fields_ = [
+        ("Numeric_Value", ctypes.c_ulong),
+        ("Passkey", ctypes.c_ulong),
+    ]
+
+
+class BLUETOOTH_AUTHENTICATION_CALLBACK_PARAMS(ctypes.Structure):
+    _anonymous_ = ("u",)
+    _fields_ = [
+        ("deviceInfo", BLUETOOTH_DEVICE_INFO),
+        ("authenticationMethod", ctypes.c_int),
+        ("ioCapability", ctypes.c_int),
+        ("authenticationRequirements", ctypes.c_int),
+        ("u", BLUETOOTH_AUTHENTICATION_CALLBACK_VALUE),
+    ]
+
+
+_WIN_CALLBACK_FACTORY = getattr(ctypes, "WINFUNCTYPE", ctypes.CFUNCTYPE)
+_AUTHENTICATION_CALLBACK_EX = _WIN_CALLBACK_FACTORY(
+    wintypes.BOOL,
+    ctypes.c_void_p,
+    ctypes.POINTER(BLUETOOTH_AUTHENTICATION_CALLBACK_PARAMS),
+)
+
+
+class BLUETOOTH_PIN_INFO(ctypes.Structure):
+    _fields_ = [
+        ("pin", ctypes.c_ubyte * BLUETOOTH_MAX_PASSKEY_SIZE),
+        ("pinLength", ctypes.c_ubyte),
+    ]
+
+
+class BLUETOOTH_OOB_DATA_INFO(ctypes.Structure):
+    _fields_ = [
+        ("C", ctypes.c_ubyte * 16),
+        ("R", ctypes.c_ubyte * 16),
+    ]
+
+
+class BLUETOOTH_NUMERIC_COMPARISON_INFO(ctypes.Structure):
+    _fields_ = [("NumericValue", ctypes.c_ulong)]
+
+
+class BLUETOOTH_PASSKEY_INFO(ctypes.Structure):
+    _fields_ = [("passkey", ctypes.c_ulong)]
+
+
+class BLUETOOTH_AUTHENTICATE_RESPONSE_DATA(ctypes.Union):
+    _fields_ = [
+        ("pinInfo", BLUETOOTH_PIN_INFO),
+        ("oobInfo", BLUETOOTH_OOB_DATA_INFO),
+        ("numericCompInfo", BLUETOOTH_NUMERIC_COMPARISON_INFO),
+        ("passkeyInfo", BLUETOOTH_PASSKEY_INFO),
+    ]
+
+
+class BLUETOOTH_AUTHENTICATE_RESPONSE(ctypes.Structure):
+    _anonymous_ = ("u",)
+    _fields_ = [
+        ("bthAddressRemote", BLUETOOTH_ADDRESS),
+        ("authMethod", ctypes.c_int),
+        ("u", BLUETOOTH_AUTHENTICATE_RESPONSE_DATA),
+        ("negativeResponse", ctypes.c_ubyte),
+    ]
 
 
 class GUID(ctypes.Structure):
@@ -164,20 +237,7 @@ class _BluetoothApi:
     def pair(self, address: str, *, pin: str = "") -> OperationResult:
         if pin:
             return self._pair_with_pin(address, pin)
-
-        info = _device_info_for_address(address)
-        code = self._bth.BluetoothAuthenticateDeviceEx(
-            self._parent_window(),
-            None,
-            ctypes.byref(info),
-            None,
-            BLUETOOTH_MITM_PROTECTION_NOT_REQUIRED,
-        )
-        if code == ERROR_SUCCESS:
-            return OperationResult(True, "ペアリングに成功しました", code)
-        if code == ERROR_NO_MORE_ITEMS:
-            return OperationResult(True, "すでにペアリング済みです", code)
-        return OperationResult(False, f"ペアリングに失敗しました: {_format_error(code)}", code)
+        return self.pair_with_auth_callback(address)
 
     def _pair_with_pin(self, address: str, pin: str) -> OperationResult:
         if len(pin) > BLUETOOTH_MAX_PASSKEY_SIZE:
@@ -196,6 +256,78 @@ class _BluetoothApi:
         if code == ERROR_NO_MORE_ITEMS:
             return OperationResult(True, "すでにペアリング済みです", code)
         return OperationResult(False, f"PIN付きペアリングに失敗しました: {_format_error(code)}", code)
+
+    def pair_with_auth_callback(self, address: str) -> OperationResult:
+        info = _device_info_for_address(address)
+        callback_done = threading.Event()
+        callback_results: list[str] = []
+
+        def auth_callback(
+            _param: ctypes.c_void_p,
+            params_ptr: ctypes.POINTER(BLUETOOTH_AUTHENTICATION_CALLBACK_PARAMS),
+        ) -> wintypes.BOOL:
+            try:
+                params = params_ptr.contents
+                response = BLUETOOTH_AUTHENTICATE_RESPONSE()
+                response.bthAddressRemote = params.deviceInfo.Address
+                response.authMethod = params.authenticationMethod
+                response.negativeResponse = 0
+
+                if params.authenticationMethod == BLUETOOTH_AUTHENTICATION_METHOD_NUMERIC_COMPARISON:
+                    response.numericCompInfo.NumericValue = params.Numeric_Value
+                    action = "numeric comparison accepted"
+                elif params.authenticationMethod == BLUETOOTH_AUTHENTICATION_METHOD_PASSKEY_NOTIFICATION:
+                    response.passkeyInfo.passkey = params.Passkey
+                    action = "passkey notification accepted"
+                else:
+                    response.negativeResponse = 1
+                    action = f"unsupported method rejected: {params.authenticationMethod}"
+
+                code = self._bth.BluetoothSendAuthenticationResponseEx(None, ctypes.byref(response))
+                callback_results.append(f"{action}; response={_format_error(code)}")
+            except Exception as exc:  # pragma: no cover - OS callback boundary
+                callback_results.append(f"callback exception: {exc}")
+            finally:
+                callback_done.set()
+            return True
+
+        callback = _AUTHENTICATION_CALLBACK_EX(auth_callback)
+        registration = wintypes.HANDLE()
+        register_code = self._bth.BluetoothRegisterForAuthenticationEx(
+            ctypes.byref(info),
+            ctypes.byref(registration),
+            callback,
+            None,
+        )
+        if register_code != ERROR_SUCCESS:
+            return OperationResult(
+                False,
+                f"認証コールバック登録に失敗しました: {_format_error(register_code)}",
+                register_code,
+            )
+
+        try:
+            code = self._bth.BluetoothAuthenticateDeviceEx(
+                self._parent_window(),
+                None,
+                ctypes.byref(info),
+                None,
+                BLUETOOTH_MITM_PROTECTION_NOT_REQUIRED,
+            )
+            if code not in (ERROR_SUCCESS, ERROR_NO_MORE_ITEMS) and not callback_done.is_set():
+                callback_done.wait(timeout=2.0)
+        finally:
+            self._bth.BluetoothUnregisterAuthentication(registration)
+
+        callback_detail = "; ".join(callback_results)
+        if not callback_detail:
+            callback_detail = "認証イベントは届きませんでした"
+        detail = f" ({callback_detail})" if callback_detail else ""
+        if code == ERROR_SUCCESS:
+            return OperationResult(True, f"ペアリングに成功しました{detail}", code)
+        if code == ERROR_NO_MORE_ITEMS:
+            return OperationResult(True, f"すでにペアリング済みです{detail}", code)
+        return OperationResult(False, f"ペアリングに失敗しました: {_format_error(code)}{detail}", code)
 
     def _parent_window(self) -> wintypes.HWND | None:
         return self._parent_hwnd if self._parent_hwnd.value else None
@@ -291,6 +423,20 @@ class _BluetoothApi:
             ctypes.c_ulong,
         ]
         self._bth.BluetoothAuthenticateDevice.restype = wintypes.DWORD
+        self._bth.BluetoothRegisterForAuthenticationEx.argtypes = [
+            ctypes.POINTER(BLUETOOTH_DEVICE_INFO),
+            ctypes.POINTER(wintypes.HANDLE),
+            _AUTHENTICATION_CALLBACK_EX,
+            ctypes.c_void_p,
+        ]
+        self._bth.BluetoothRegisterForAuthenticationEx.restype = wintypes.DWORD
+        self._bth.BluetoothUnregisterAuthentication.argtypes = [wintypes.HANDLE]
+        self._bth.BluetoothUnregisterAuthentication.restype = wintypes.BOOL
+        self._bth.BluetoothSendAuthenticationResponseEx.argtypes = [
+            wintypes.HANDLE,
+            ctypes.POINTER(BLUETOOTH_AUTHENTICATE_RESPONSE),
+        ]
+        self._bth.BluetoothSendAuthenticationResponseEx.restype = wintypes.DWORD
         self._bth.BluetoothRemoveDevice.argtypes = [ctypes.POINTER(BLUETOOTH_ADDRESS)]
         self._bth.BluetoothRemoveDevice.restype = wintypes.DWORD
         self._bth.BluetoothFindFirstRadio.argtypes = [

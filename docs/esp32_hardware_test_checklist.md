@@ -19,7 +19,8 @@
 
 ```text
 Bluetooth SPP mock started as BT-COM-MOCK
-Pair this device from Windows Bluetooth settings.
+SSP no-PIN mode is enabled.
+Pair this device from Windows Bluetooth settings or BluetoothAssistant.
 ```
 
 PlatformIOやArduino CLIでビルドする場合、日本語を含むパスでESP32ツールチェーンが失敗することがあります。その場合は `C:\ba_esp32\...` のような英数字だけの一時フォルダへスケッチを置いてビルドしてください。
@@ -61,7 +62,7 @@ AA:BB:CC:DD:EE:FF
 
 通常のBluetoothペアリングは、まず管理者権限なしで試します。企業PCのポリシーやドライバ操作が絡む場合だけ管理者権限が必要になることがあります。
 
-COM差分監視を開始してから、Windowsで `BT-COM-MOCK` をペアリングします。
+手動確認をする場合は、COM差分監視を開始してから、Windowsで `BT-COM-MOCK` をペアリングします。
 
 ```powershell
 .\scripts\watch_com_delta.ps1 -ExpectNew -WaitSeconds 90 -OutputPath .\esp32-com-positive.json
@@ -93,11 +94,14 @@ COMが `COM12` などとして見えたら、その名前を控えます。
 .\scripts\run_esp32_pairing_test.ps1 -TargetName BT-COM-MOCK -ComWaitSeconds 60 -IUnderstandThisChangesBluetoothPairing
 ```
 
-Windows がユーザー承認を要求する環境では、CLIだけのペアリングが `1244 (ユーザーが認証されていない...)` で拒否されることがあります。その場合は失敗ではなくOS側の保護です。Windows設定画面またはアプリ本体で確認ダイアログを承認しながら、手順4のCOM差分監視で確認してください。
+PIN不要の SSP 機器では、アプリが Windows の認証コールバックに自動応答します。成功時のログには `numeric comparison accepted` が出ます。
+
+Windows がユーザー承認を要求する環境では、右下に「デバイスの追加」通知が出たり、CLIだけのペアリングが `1244 (ユーザーが認証されていない...)` で拒否されたりすることがあります。その場合は Windows 側の同意確認です。Windows設定画面またはアプリ本体で確認しながら、手順4のCOM差分監視で確認してください。
 
 成功条件:
 
 - `hardware_pairing_resolve_target.ok` が `true`
+- `hardware_pairing_event_*` に `numeric comparison accepted` が出る
 - `hardware_pairing_outcome.ok` が `true`
 - `hardware_pairing_windows_registered.ok` が `true`
 - `hardware_pairing_com_after.ok` が `true`
@@ -122,7 +126,23 @@ Windows がユーザー承認を要求する環境では、CLIだけのペアリ
 - `expect_device_address.ok` が `true`
 - `expect_com_port.ok` が `true`
 
-## 7. アプリ本体で確認する
+## 7. 3台連続で確認する
+
+ESP32 A/B/NO-COM をまとめて確認する場合:
+
+```powershell
+.\scripts\run_esp32_sequence_test.ps1 -ResetPairing -IUnderstandThisChangesBluetoothPairing
+```
+
+デフォルトの期待値:
+
+- `BT-COM-MOCK-A`: COM が出る
+- `BT-COM-MOCK-B`: COM が出る
+- `BT-NO-COM-MOCK`: COM が出ない
+
+`BT-NO-COM-MOCK` は通常のペアリングテストとしては失敗終了しますが、この連続テストでは「COM が出ないこと」が期待値なので PASS 扱いです。
+
+## 8. アプリ本体で確認する
 
 ```powershell
 py -m bluetooth_assistant
@@ -130,7 +150,7 @@ py -m bluetooth_assistant
 
 確認すること:
 
-- スキャンで `BT-COM-MOCK` が見える
+- スキャンで `BT-COM-MOCK-A` / `BT-COM-MOCK-B` / `BT-NO-COM-MOCK` が見える
 - `COM候補` 列が `COM候補 高` または `COMあり` になる
 - 同じMACが複数行に出た場合、1行にまとまる
 - `MAC指定` に控えたMACを入れて追加できる
@@ -138,7 +158,7 @@ py -m bluetooth_assistant
 - ログに `解除 -> ペアリング -> COM待ち` の流れが出る
 - COMが出たら成功になり、次の機器へ進む
 
-## 8. 結果を残す
+## 9. 結果を残す
 
 診断結果はデフォルトで次に保存されます。
 
@@ -148,7 +168,7 @@ esp32-hardware-check.json
 
 うまくいかない時は、このJSONとアプリのログ欄の内容を見れば原因を追いやすくなります。
 
-## 9. COM が出ないパターンを明示的に作る
+## 10. COM が出ないパターンを明示的に作る
 
 COMが出ないテストは、別スケッチを使います。
 
@@ -180,3 +200,11 @@ This sketch intentionally does not start SPP.
 - `new_ports` が空
 
 これで「Bluetoothには見えるがCOMは出ない」ケースを明示的に再現できます。
+
+アプリ経由で negative case を確認する場合:
+
+```powershell
+.\scripts\run_esp32_pairing_test.ps1 -TargetName BT-NO-COM-MOCK -ComWaitSeconds 45 -IUnderstandThisChangesBluetoothPairing
+```
+
+このケースは `対象機器は Serial Port Profile を返していません` と出て、`hardware_pairing_outcome.ok` / `hardware_pairing_com_after.ok` が `false` なら期待通りです。
