@@ -15,6 +15,7 @@ ERROR_SERVICE_DOES_NOT_EXIST = 1060
 E_INVALIDARG = 0x80070057
 BLUETOOTH_SERVICE_ENABLE = 0x00000001
 BLUETOOTH_MITM_PROTECTION_NOT_REQUIRED = 0
+BLUETOOTH_MAX_PASSKEY_SIZE = 16
 
 
 class BluetoothError(RuntimeError):
@@ -98,16 +99,16 @@ SPP_SERVICE_GUID = GUID(
 
 
 class WindowsBluetoothBackend:
-    def __init__(self) -> None:
+    def __init__(self, parent_hwnd: int | None = None) -> None:
         if os.name != "nt":
             raise UnsupportedPlatformError("Windows のみ対応です")
-        self._api = _BluetoothApi()
+        self._api = _BluetoothApi(parent_hwnd=parent_hwnd)
 
     def list_devices(self, *, issue_inquiry: bool = True, timeout_multiplier: int = 8) -> list[BluetoothDevice]:
         return self._api.enumerate_devices(issue_inquiry=issue_inquiry, timeout_multiplier=timeout_multiplier)
 
-    def pair(self, address: str) -> OperationResult:
-        return self._api.pair(address)
+    def pair(self, address: str, pin: str = "") -> OperationResult:
+        return self._api.pair(address, pin=pin)
 
     def unpair(self, address: str) -> OperationResult:
         return self._api.unpair(address)
@@ -120,10 +121,11 @@ class WindowsBluetoothBackend:
 
 
 class _BluetoothApi:
-    def __init__(self) -> None:
+    def __init__(self, *, parent_hwnd: int | None = None) -> None:
         self._bth = ctypes.WinDLL("bthprops.cpl", use_last_error=True)
         self._kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
         self._configure_functions()
+        self._parent_hwnd = wintypes.HWND(parent_hwnd or self._kernel32.GetConsoleWindow() or 0)
 
     def enumerate_devices(self, *, issue_inquiry: bool, timeout_multiplier: int) -> list[BluetoothDevice]:
         params = BLUETOOTH_DEVICE_SEARCH_PARAMS()
@@ -159,10 +161,13 @@ class _BluetoothApi:
 
         return merge_duplicate_devices(devices)
 
-    def pair(self, address: str) -> OperationResult:
+    def pair(self, address: str, *, pin: str = "") -> OperationResult:
+        if pin:
+            return self._pair_with_pin(address, pin)
+
         info = _device_info_for_address(address)
         code = self._bth.BluetoothAuthenticateDeviceEx(
-            None,
+            self._parent_window(),
             None,
             ctypes.byref(info),
             None,
@@ -173,6 +178,27 @@ class _BluetoothApi:
         if code == ERROR_NO_MORE_ITEMS:
             return OperationResult(True, "すでにペアリング済みです", code)
         return OperationResult(False, f"ペアリングに失敗しました: {_format_error(code)}", code)
+
+    def _pair_with_pin(self, address: str, pin: str) -> OperationResult:
+        if len(pin) > BLUETOOTH_MAX_PASSKEY_SIZE:
+            return OperationResult(False, f"PINは{BLUETOOTH_MAX_PASSKEY_SIZE}文字以内で指定してください")
+
+        info = _device_info_for_address(address)
+        code = self._bth.BluetoothAuthenticateDevice(
+            self._parent_window(),
+            None,
+            ctypes.byref(info),
+            pin,
+            len(pin),
+        )
+        if code == ERROR_SUCCESS:
+            return OperationResult(True, "PIN付きペアリングに成功しました", code)
+        if code == ERROR_NO_MORE_ITEMS:
+            return OperationResult(True, "すでにペアリング済みです", code)
+        return OperationResult(False, f"PIN付きペアリングに失敗しました: {_format_error(code)}", code)
+
+    def _parent_window(self) -> wintypes.HWND | None:
+        return self._parent_hwnd if self._parent_hwnd.value else None
 
     def unpair(self, address: str) -> OperationResult:
         bt_address = _address_from_string(address)
@@ -257,6 +283,14 @@ class _BluetoothApi:
             wintypes.DWORD,
         ]
         self._bth.BluetoothAuthenticateDeviceEx.restype = wintypes.DWORD
+        self._bth.BluetoothAuthenticateDevice.argtypes = [
+            wintypes.HWND,
+            wintypes.HANDLE,
+            ctypes.POINTER(BLUETOOTH_DEVICE_INFO),
+            wintypes.LPCWSTR,
+            ctypes.c_ulong,
+        ]
+        self._bth.BluetoothAuthenticateDevice.restype = wintypes.DWORD
         self._bth.BluetoothRemoveDevice.argtypes = [ctypes.POINTER(BLUETOOTH_ADDRESS)]
         self._bth.BluetoothRemoveDevice.restype = wintypes.DWORD
         self._bth.BluetoothFindFirstRadio.argtypes = [
@@ -275,6 +309,8 @@ class _BluetoothApi:
             wintypes.DWORD,
         ]
         self._bth.BluetoothSetServiceState.restype = wintypes.DWORD
+        self._kernel32.GetConsoleWindow.argtypes = []
+        self._kernel32.GetConsoleWindow.restype = wintypes.HWND
         self._kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
         self._kernel32.CloseHandle.restype = wintypes.BOOL
 

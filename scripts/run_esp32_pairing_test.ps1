@@ -2,6 +2,7 @@ param(
     [string]$Python = ".\.venv\Scripts\python.exe",
     [string]$TargetName = "BT-COM-MOCK",
     [string]$TargetAddress = "",
+    [string]$PairPin = "",
     [int]$ComWaitSeconds = 60,
     [int]$PollSeconds = 3,
     [int]$PairAttempts = 1,
@@ -46,9 +47,15 @@ if ($TargetAddress) {
     $argsList += @("--target-name", $TargetName)
 }
 
+if ($PairPin) {
+    $argsList += @("--pair-pin", $PairPin)
+}
+
 Write-Host "Running ESP32 pairing test. This changes Windows Bluetooth pairing state."
 if ($TargetAddress) { Write-Host "TargetAddress: $TargetAddress" }
 if ($TargetName) { Write-Host "TargetName: $TargetName" }
+if ($PairPin) { Write-Host "PairPin: <provided>" }
+if (-not $PairPin) { Write-Host "PairPin: not used. Approve any Windows pairing prompt if it appears." }
 
 $output = & $Python @argsList
 $exitCode = $LASTEXITCODE
@@ -61,6 +68,8 @@ if ($exitCode -ne 0) {
     Write-Host "- Confirm the ESP32 SPP sketch is running as BT-COM-MOCK."
     Write-Host "- If multiple devices match the name, re-run with -TargetAddress."
     Write-Host "- Watch for Windows pairing prompts and approve them."
+    Write-Host "- Error 1244 usually means Windows required user authentication; pair from the app or Windows Settings while watching COM changes."
+    Write-Host "- Use -PairPin only for legacy devices that explicitly require a PIN."
     Write-Host "- Remove stale BT-COM-MOCK pairing from Windows settings and retry."
     Write-Host "- If no COM appears, verify this is ESP32-WROOM/DevKitC, not S3/C3/C6/S2."
     exit $exitCode

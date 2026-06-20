@@ -109,7 +109,8 @@ class MockBluetoothBackend:
                 )
         return merge_duplicate_devices(devices)
 
-    def pair(self, address: str) -> OperationResult:
+    def pair(self, address: str, pin: str = "") -> OperationResult:
+        _ = pin
         scenario = self._scenario_for(address, create=True)
         count = self.pair_count_for(scenario.address) + 1
         self._pair_counts[scenario.address] = count

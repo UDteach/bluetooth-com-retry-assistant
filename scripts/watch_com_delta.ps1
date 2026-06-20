@@ -13,9 +13,54 @@ if ($ExpectNew -and $ExpectNoNew) {
 }
 
 function Get-ComPorts {
-    Get-CimInstance Win32_SerialPort |
-        Select-Object DeviceID, Name, PNPDeviceID |
-        Sort-Object DeviceID
+    $ports = @()
+
+    try {
+        $ports += @(
+            Get-CimInstance Win32_SerialPort -ErrorAction Stop |
+                ForEach-Object {
+                    [pscustomobject]@{
+                        DeviceID = $_.DeviceID
+                        Name = $_.Name
+                        PNPDeviceID = $_.PNPDeviceID
+                        Source = "Win32_SerialPort"
+                    }
+                }
+        )
+    } catch {
+        Write-Verbose "Win32_SerialPort enumeration failed: $($_.Exception.Message)"
+    }
+
+    try {
+        $ports += @(
+            Get-PnpDevice -Class Ports -ErrorAction Stop |
+                Where-Object { $_.FriendlyName -match "\((COM\d+)\)" } |
+                ForEach-Object {
+                    [pscustomobject]@{
+                        DeviceID = $Matches[1]
+                        Name = $_.FriendlyName
+                        PNPDeviceID = $_.InstanceId
+                        Source = "PnP Ports"
+                    }
+                }
+        )
+    } catch {
+        Write-Verbose "PnP port enumeration failed: $($_.Exception.Message)"
+    }
+
+    $seen = @{}
+    $ports |
+        Where-Object { $_.DeviceID } |
+        ForEach-Object {
+            $key = $_.DeviceID.ToUpperInvariant()
+            if (-not $seen.ContainsKey($key)) {
+                $seen[$key] = $true
+                $_
+            }
+        } |
+        Sort-Object `
+            @{Expression = { if ($_.DeviceID -match "^COM(\d+)$") { [int]$Matches[1] } else { 9999 } }}, `
+            DeviceID
 }
 
 $baseline = @(Get-ComPorts)

@@ -23,6 +23,8 @@ Windows の Bluetooth 一覧、ペアリング、COM ポート作成まで再現
 3. Bluetooth の詳細設定、またはデバイスマネージャーで COM ポートが作られることを確認します。
 4. BluetoothAssistant でスキャンし、表示された MAC をチェックして接続処理を実行します。
 
+SPP mock は固定PINを設定していません。実機で使う予定の「PINや専用コードが不要な機器」に近い条件で、Windows 側の通常ペアリング確認を使います。
+
 この方法は実Bluetooth機器なので、Windows 側のペアリング済みデバイスにも表示されます。アプリの `--mock` とは違い、Windows の状態やペアリング UI の影響を受けます。
 
 詳細な実行順序と成功条件は `docs/esp32_hardware_test_checklist.md` を見てください。

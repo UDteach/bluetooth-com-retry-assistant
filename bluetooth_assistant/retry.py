@@ -13,7 +13,7 @@ class BluetoothBackend(Protocol):
     def list_devices(self, *, issue_inquiry: bool = True, timeout_multiplier: int = 8) -> list[BluetoothDevice]:
         ...
 
-    def pair(self, address: str) -> OperationResult:
+    def pair(self, address: str, pin: str = "") -> OperationResult:
         ...
 
     def unpair(self, address: str) -> OperationResult:
@@ -35,6 +35,7 @@ class RetryConfig:
     settle_seconds: float = 2.0
     unpair_before_each_attempt: bool = True
     enable_serial_service: bool = True
+    pair_pin: str = ""
 
 
 @dataclass(slots=True)
@@ -107,7 +108,10 @@ class PairingRetrier:
 
             emit(RetryEvent("pair", "ペアリングを開始します", attempt))
             try:
-                pair_result = self.backend.pair(target_address)
+                if config.pair_pin:
+                    pair_result = self.backend.pair(target_address, config.pair_pin)
+                else:
+                    pair_result = self.backend.pair(target_address)
             except Exception as exc:  # pragma: no cover - UI/logging boundary
                 emit(RetryEvent("warning", f"ペアリング処理で例外が発生しました: {exc}", attempt))
                 continue

@@ -107,7 +107,7 @@ class BluetoothAssistantApp(tk.Tk):
 
         if backend is None:
             try:
-                self._backend = WindowsBluetoothBackend()
+                self._backend = WindowsBluetoothBackend(parent_hwnd=self.winfo_id())
             except UnsupportedPlatformError as exc:
                 messagebox.showerror("未対応", str(exc))
                 raise

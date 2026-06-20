@@ -140,6 +140,38 @@ class DiagnosticsTests(unittest.TestCase):
         self.assertTrue(by_name["hardware_pairing_com_after"].ok)
         self.assertEqual(by_name["hardware_pairing_com_after"].data["matching_ports"][0]["device"], "COM12")
 
+    def test_hardware_pairing_test_passes_pair_pin(self):
+        class PinRecordingBackend(MockBluetoothBackend):
+            def __init__(self):
+                super().__init__(
+                    scenarios=[
+                        MockDeviceScenario(
+                            "AA:BB:CC:DD:EE:FF",
+                            "BT-COM-MOCK",
+                            "COM12",
+                            appear_after_pair_count=1,
+                        )
+                    ]
+                )
+                self.pins: list[str] = []
+
+            def pair(self, address: str, pin: str = ""):
+                self.pins.append(pin)
+                return super().pair(address, pin)
+
+        backend = PinRecordingBackend()
+
+        results = run_hardware_pairing_test(
+            target_name="BT-COM-MOCK",
+            pair_pin="1234",
+            com_wait_seconds=0,
+            backend=backend,
+            sleeper=lambda _seconds: None,
+        )
+
+        self.assertTrue({result.name: result for result in results}["hardware_pairing_outcome"].ok)
+        self.assertEqual(backend.pins, ["1234"])
+
     def test_hardware_pairing_test_rejects_ambiguous_name(self):
         backend = MockBluetoothBackend(
             scenarios=[

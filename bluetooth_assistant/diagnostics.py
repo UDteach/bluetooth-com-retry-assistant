@@ -265,6 +265,7 @@ def run_hardware_pairing_test(
     *,
     target_address: str = "",
     target_name: str = "",
+    pair_pin: str = "",
     com_wait_seconds: float = 45.0,
     poll_seconds: float = 3.0,
     max_attempts: int = 1,
@@ -314,6 +315,7 @@ def run_hardware_pairing_test(
             settle_seconds=2.0,
             unpair_before_each_attempt=True,
             enable_serial_service=True,
+            pair_pin=pair_pin,
         ),
         on_event=lambda event: _append_pairing_event(results, event.stage, event.message, event.attempt, event.ports),
     )
@@ -521,6 +523,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--target-address", default="", help="Target MAC for --hardware-pairing-test.")
     parser.add_argument("--target-name", default="", help="Unique target name substring for --hardware-pairing-test.")
+    parser.add_argument("--pair-pin", default="", help="Optional Bluetooth PIN for --hardware-pairing-test.")
     parser.add_argument("--com-wait-seconds", type=float, default=45.0, help="COM wait for hardware pairing test.")
     parser.add_argument("--pair-attempts", type=int, default=1, help="Pair attempts for hardware pairing test.")
     args = parser.parse_args(argv)
@@ -554,6 +557,7 @@ def main(argv: list[str] | None = None) -> int:
             run_hardware_pairing_test(
                 target_address=args.target_address,
                 target_name=args.target_name,
+                pair_pin=args.pair_pin,
                 com_wait_seconds=args.com_wait_seconds,
                 poll_seconds=args.poll_seconds,
                 max_attempts=args.pair_attempts,
