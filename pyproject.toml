@@ -1,6 +1,6 @@
 [project]
 name = "bluetooth-assistant"
-version = "0.1.0"
+version = "0.12.2"
 description = "Windows Bluetooth pairing retry assistant for SPP COM port discovery."
 requires-python = ">=3.10"
 dependencies = ["pyserial>=3.5"]
