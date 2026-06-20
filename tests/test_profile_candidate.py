@@ -73,6 +73,15 @@ class ProfileCandidateTests(unittest.TestCase):
         self.assertEqual(assessment.label, "BLE GATT候補")
         self.assertEqual(assessment.icon, "◇")
 
+    def test_dfu_no_com_name_marks_firmware_dfu_candidate(self):
+        device = BluetoothDevice("AA:BB:CC:DD:EE:FF", name="BT-DFU-NO-COM-MOCK")
+
+        assessment = assess_profile_candidate(device, [])
+
+        self.assertEqual(assessment.profile, "BLE GATT/DFU")
+        self.assertTrue(assessment.firmware_candidate)
+        self.assertGreaterEqual(assessment.score, 45)
+
     def test_no_com_name_does_not_become_spp_from_com_word(self):
         device = BluetoothDevice("AA:BB:CC:DD:EE:FF", name="BT-NO-COM-MOCK")
 

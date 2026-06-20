@@ -39,6 +39,13 @@ class ComCandidateTests(unittest.TestCase):
         self.assertEqual(assessment.icon, "×")
         self.assertIn("名前にCOMが出にくいヒントがあります", assessment.reasons)
 
+    def test_dfu_no_com_name_stays_low_com_candidate(self):
+        device = BluetoothDevice("AA:BB:CC:DD:EE:FF", name="BT-DFU-NO-COM-MOCK")
+
+        assessment = assess_com_candidate(device, [])
+
+        self.assertLess(assessment.score, 10)
+
     def test_same_address_count_adds_duplicate_reason(self):
         device = BluetoothDevice("AA:BB:CC:DD:EE:FF", name="Unknown")
 
