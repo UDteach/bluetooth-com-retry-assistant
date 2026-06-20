@@ -7,6 +7,7 @@ import threading
 import time
 import tkinter as tk
 from collections import Counter, defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass
 from tkinter import messagebox, ttk
 
@@ -146,6 +147,16 @@ def format_com_port_summary(ports: list[ComPortInfo]) -> str:
         return "現在のCOM: 0件"
     names = ", ".join(row[0] for row in rows)
     return f"現在のCOM: {len(rows)}件（{names}）"
+
+
+def scan_progress_signature(devices: list[BluetoothDevice]) -> tuple[tuple[str, str, int, int], ...]:
+    counts = Counter((device.address, device.name, device.class_of_device) for device in devices)
+    return tuple(
+        sorted(
+            (address, name, class_of_device, count)
+            for (address, name, class_of_device), count in counts.items()
+        )
+    )
 
 
 def _dedupe_devices_by_address(devices: list[BluetoothDevice]) -> list[BluetoothDevice]:
@@ -518,9 +529,30 @@ class BluetoothAssistantApp(tk.Tk):
 
         def work() -> None:
             try:
+                ports = self._backend.list_com_ports()
+                last_progress_signature: tuple[tuple[str, str, int, int], ...] = ()
+
+                def publish_progress(
+                    progress_devices: list[BluetoothDevice],
+                    progress_elapsed: float,
+                    progress_scan_count: int,
+                ) -> None:
+                    nonlocal last_progress_signature
+                    signature = scan_progress_signature(progress_devices)
+                    if signature == last_progress_signature:
+                        return
+                    last_progress_signature = signature
+                    self._queue.put(
+                        (
+                            "scan_progress",
+                            (progress_devices, ports, progress_elapsed, progress_scan_count),
+                        )
+                    )
+
                 devices, elapsed, scan_count = self._scan_with_minimum_duration(
                     scan_seconds=scan_seconds,
                     timeout_multiplier=timeout_multiplier,
+                    on_progress=publish_progress,
                 )
                 ports = self._backend.list_com_ports()
                 self._queue.put(
@@ -700,6 +732,12 @@ class BluetoothAssistantApp(tk.Tk):
                 if kind == "devices":
                     devices, ports = payload  # type: ignore[misc]
                     self._update_devices(devices, ports)
+                elif kind == "scan_progress":
+                    devices, ports, elapsed, scan_count = payload  # type: ignore[misc]
+                    self._update_devices(devices, ports, append_log=False, update_idle_status=False)
+                    self._set_status(
+                        f"スキャン中: {len(devices)}台発見 / Windows確認 {scan_count}回目 / {elapsed:.1f}秒"
+                    )
                 elif kind == "ports":
                     ports = payload
                     assert isinstance(ports, list)
@@ -755,7 +793,14 @@ class BluetoothAssistantApp(tk.Tk):
             self._refresh_tree_rows()
         self._append_log(f"{device.address} を手入力で追加しました")
 
-    def _update_devices(self, devices: list[BluetoothDevice], ports: list[ComPortInfo]) -> None:
+    def _update_devices(
+        self,
+        devices: list[BluetoothDevice],
+        ports: list[ComPortInfo],
+        *,
+        append_log: bool = True,
+        update_idle_status: bool = True,
+    ) -> None:
         self._last_scanned_devices = list(devices)
         display_devices = devices_with_manual_devices(devices, self._manual_devices)
         rows = build_device_display_rows(display_devices, ports)
@@ -770,8 +815,9 @@ class BluetoothAssistantApp(tk.Tk):
             self.tree.insert("", tk.END, iid=row.row_id, values=self._row_values(row.row_id, row.device))
         if selected_row_id in self._devices:
             self.tree.selection_set(selected_row_id)
-        self._append_log(f"{len(rows)} 行を表示しました / COM {len(ports)} 件")
-        if not self._is_worker_running():
+        if append_log:
+            self._append_log(f"{len(rows)} 行を表示しました / COM {len(ports)} 件")
+        if update_idle_status and not self._is_worker_running():
             self._set_status(f"待機中: {len(rows)}行 / COM {len(ports)}件")
         self._update_selection_detail()
 
@@ -904,6 +950,7 @@ class BluetoothAssistantApp(tk.Tk):
         *,
         scan_seconds: int,
         timeout_multiplier: int,
+        on_progress: Callable[[list[BluetoothDevice], float, int], None] | None = None,
     ) -> tuple[list[BluetoothDevice], float, int]:
         started = time.perf_counter()
         deadline = started + scan_seconds
@@ -923,6 +970,8 @@ class BluetoothAssistantApp(tk.Tk):
                 occurrence_by_signature[signature] += 1
                 found[(*signature, occurrence_by_signature[signature])] = device
             elapsed = time.perf_counter() - started
+            if on_progress is not None and found:
+                on_progress(list(found.values()), elapsed, scan_count)
             if elapsed >= scan_seconds:
                 return list(found.values()), elapsed, scan_count
             time.sleep(min(1.0, max(0.1, deadline - time.perf_counter())))

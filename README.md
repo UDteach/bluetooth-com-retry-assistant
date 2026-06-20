@@ -21,6 +21,7 @@ py -m bluetooth_assistant --mock
 ## 方針
 
 - Bluetooth 一覧で同じ MAC アドレスが複数見える場合も、候補ごとに複数行で表示します。
+- スキャン中は、完了まで待たずに発見した候補から順に一覧へ表示します。
 - スキャンに出ない機器でも、MAC アドレスが分かっていれば `MAC指定` から処理対象に追加できます。
 - COM ポートは `Win32_SerialPort` / Windows PnP Ports / pySerial の `hwid` / `PNPDeviceID` から MAC アドレスを照合します。
 - ペアリング後に Serial Port Profile のサービス有効化を試み、COM ポート作成を促します。

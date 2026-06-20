@@ -8,6 +8,7 @@ from bluetooth_assistant.app import (
     format_status_text,
     manual_device_from_address,
     retry_config_from_values,
+    scan_progress_signature,
     timeout_multiplier_from_seconds,
     window_title_for_mode,
 )
@@ -132,3 +133,20 @@ class AppHelperTests(unittest.TestCase):
 
         self.assertEqual(format_com_port_summary([]), "現在のCOM: 0件")
         self.assertEqual(format_com_port_summary(ports), "現在のCOM: 2件（COM4, COM7）")
+
+    def test_scan_progress_signature_counts_duplicate_candidates(self):
+        devices = [
+            BluetoothDevice("AA:BB:CC:DD:EE:FF", name="BT-COM"),
+            BluetoothDevice("AA:BB:CC:DD:EE:FF", name="BT-COM"),
+            BluetoothDevice("11:22:33:44:55:66", name="BT-NO-COM", class_of_device=0x001F00),
+        ]
+
+        signature = scan_progress_signature(devices)
+
+        self.assertEqual(
+            signature,
+            (
+                ("11:22:33:44:55:66", "BT-NO-COM", 0x001F00, 1),
+                ("AA:BB:CC:DD:EE:FF", "BT-COM", 0, 2),
+            ),
+        )
