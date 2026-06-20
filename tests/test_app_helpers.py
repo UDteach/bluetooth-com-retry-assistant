@@ -1,6 +1,8 @@
 import unittest
+from types import MethodType, SimpleNamespace
 
 from bluetooth_assistant.app import (
+    BluetoothAssistantApp,
     build_com_port_display_rows,
     build_device_display_rows,
     devices_with_manual_devices,
@@ -150,3 +152,56 @@ class AppHelperTests(unittest.TestCase):
                 ("AA:BB:CC:DD:EE:FF", "BT-COM", 0, 2),
             ),
         )
+
+    def test_clear_scan_results_for_new_scan_removes_previous_rows(self):
+        class FakeTree:
+            def __init__(self) -> None:
+                self.children = ["AA:BB:CC:DD:EE:FF#1"]
+                self.selected = ["AA:BB:CC:DD:EE:FF#1"]
+                self.removed_selection: tuple[str, ...] = ()
+                self.deleted_rows: tuple[str, ...] = ()
+
+            def selection(self) -> tuple[str, ...]:
+                return tuple(self.selected)
+
+            def selection_remove(self, *items: str) -> None:
+                self.removed_selection = items
+                self.selected = [item for item in self.selected if item not in items]
+
+            def delete(self, *items: str) -> None:
+                self.deleted_rows = items
+                self.children = [item for item in self.children if item not in items]
+
+            def get_children(self) -> tuple[str, ...]:
+                return tuple(self.children)
+
+        class FakeVar:
+            def __init__(self) -> None:
+                self.value = ""
+
+            def set(self, value: str) -> None:
+                self.value = value
+
+        fake_app = SimpleNamespace(
+            _devices={"AA:BB:CC:DD:EE:FF#1": BluetoothDevice("AA:BB:CC:DD:EE:FF")},
+            _same_address_count_by_row={"AA:BB:CC:DD:EE:FF#1": 1},
+            _last_scanned_devices=[BluetoothDevice("AA:BB:CC:DD:EE:FF")],
+            _checked_rows={"AA:BB:CC:DD:EE:FF#1"},
+            _run_status_by_address={"AA:BB:CC:DD:EE:FF": "成功"},
+            tree=FakeTree(),
+            detail_var=FakeVar(),
+        )
+        fake_app._selected_device = MethodType(BluetoothAssistantApp._selected_device, fake_app)
+        fake_app._update_selection_detail = MethodType(BluetoothAssistantApp._update_selection_detail, fake_app)
+
+        BluetoothAssistantApp._clear_scan_results_for_new_scan(fake_app)
+
+        self.assertEqual(fake_app._devices, {})
+        self.assertEqual(fake_app._same_address_count_by_row, {})
+        self.assertEqual(fake_app._last_scanned_devices, [])
+        self.assertEqual(fake_app._checked_rows, set())
+        self.assertEqual(fake_app._run_status_by_address, {})
+        self.assertEqual(fake_app.tree.removed_selection, ("AA:BB:CC:DD:EE:FF#1",))
+        self.assertEqual(fake_app.tree.deleted_rows, ("AA:BB:CC:DD:EE:FF#1",))
+        self.assertEqual(fake_app.tree.get_children(), ())
+        self.assertIn("COM候補の点数", fake_app.detail_var.value)

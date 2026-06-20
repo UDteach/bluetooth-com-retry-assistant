@@ -524,7 +524,9 @@ class BluetoothAssistantApp(tk.Tk):
         scan_seconds = self._scan_seconds_value()
         timeout_multiplier = timeout_multiplier_from_seconds(scan_seconds)
         self._set_busy(True)
+        self._clear_scan_results_for_new_scan()
         self._set_status(f"スキャン中: {scan_seconds}秒")
+        self._append_log("前回のBluetooth候補一覧をクリアしました")
         self._append_log(f"Bluetooth 機器をスキャンします（目安 {scan_seconds} 秒）")
 
         def work() -> None:
@@ -819,6 +821,18 @@ class BluetoothAssistantApp(tk.Tk):
             self._append_log(f"{len(rows)} 行を表示しました / COM {len(ports)} 件")
         if update_idle_status and not self._is_worker_running():
             self._set_status(f"待機中: {len(rows)}行 / COM {len(ports)}件")
+        self._update_selection_detail()
+
+    def _clear_scan_results_for_new_scan(self) -> None:
+        self._devices.clear()
+        self._same_address_count_by_row.clear()
+        self._last_scanned_devices.clear()
+        self._checked_rows.clear()
+        self._run_status_by_address.clear()
+        selection = self.tree.selection()
+        if selection:
+            self.tree.selection_remove(*selection)
+        self.tree.delete(*self.tree.get_children())
         self._update_selection_detail()
 
     def _update_ports(self, ports: list[ComPortInfo]) -> None:
