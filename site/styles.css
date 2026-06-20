@@ -223,7 +223,7 @@ h1 {
 .workflow ol {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  gap: 14px;
   margin: 24px 0 0;
   padding: 0;
   list-style: none;
@@ -232,11 +232,11 @@ h1 {
 
 .workflow li {
   min-height: 146px;
-  border-left: 4px solid var(--green);
+  border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 18px;
-  background: var(--green-soft);
-  color: #24483c;
+  padding: 20px;
+  background: var(--surface);
+  color: var(--ink);
   font-size: 14px;
   line-height: 1.65;
   counter-increment: step;
@@ -247,6 +247,7 @@ h1 {
   display: block;
   margin-bottom: 12px;
   color: var(--green);
+  font-size: 13px;
   font-weight: 800;
   content: "0" counter(step);
 }
